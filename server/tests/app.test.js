@@ -12,6 +12,7 @@ import { connectDB } from "../src/config/db.js";
 let mongoServer;
 let serverEnvironment;
 let address;
+const socketsToCleanup = new Set();
 
 async function registerUser(user) {
   const response = await request(serverEnvironment.app).post("/api/auth/register").send(user);
@@ -20,11 +21,13 @@ async function registerUser(user) {
 }
 
 function connectSocket(token) {
-  return ioClient(address, {
+  const socket = ioClient(address, {
     auth: { token },
     transports: ["websocket"],
     autoConnect: false
   });
+  socketsToCleanup.add(socket);
+  return socket;
 }
 
 function waitForEvent(socket, eventName, timeoutMs = 5000) {
@@ -63,7 +66,32 @@ before(async () => {
   });
 });
 
+async function disconnectSocket(socket) {
+  if (!socket) {
+    return;
+  }
+
+  if (!socket.connected && socket.disconnected) {
+    socketsToCleanup.delete(socket);
+    socket.removeAllListeners();
+    return;
+  }
+
+  await new Promise((resolve) => {
+    socket.once("disconnect", resolve);
+    socket.disconnect();
+  });
+
+  socketsToCleanup.delete(socket);
+  socket.removeAllListeners();
+}
+
+async function cleanupSockets() {
+  await Promise.all([...socketsToCleanup].map((socket) => disconnectSocket(socket).catch(() => null)));
+}
+
 after(async () => {
+  await cleanupSockets();
   if (serverEnvironment?.io) {
     await new Promise((resolve) => serverEnvironment.io.close(resolve));
   }
@@ -260,11 +288,13 @@ test("socket emits typing and message events", async () => {
   const bobSocket = connectSocket(bob.token);
   const aliceConnect = waitForEvent(aliceSocket, "connect");
   const bobConnect = waitForEvent(bobSocket, "connect");
+  const aliceReady = waitForEvent(aliceSocket, "presence:snapshot");
+  const bobReady = waitForEvent(bobSocket, "presence:snapshot");
 
   aliceSocket.connect();
   bobSocket.connect();
 
-  await Promise.all([aliceConnect, bobConnect]);
+  await Promise.all([aliceConnect, bobConnect, aliceReady, bobReady]);
 
   const typingEvent = waitForEvent(bobSocket, "typing:start");
   aliceSocket.emit("typing:start", { toUserId: bob.user.id });
@@ -280,6 +310,5 @@ test("socket emits typing and message events", async () => {
   const receivedMessage = await messageEvent;
   assert.equal(receivedMessage.text, "from socket flow");
 
-  aliceSocket.disconnect();
-  bobSocket.disconnect();
+  await Promise.all([disconnectSocket(aliceSocket), disconnectSocket(bobSocket)]);
 });

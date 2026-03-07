@@ -177,7 +177,7 @@ export function createServerEnvironment({ clientUrls, jwtSecret }) {
     }
   });
 
-  io.on("connection", async (socket) => {
+  io.on("connection", (socket) => {
     socket.join(socket.userId);
 
     const entry = ensurePresenceEntry(socket.userId);
@@ -185,19 +185,6 @@ export function createServerEnvironment({ clientUrls, jwtSecret }) {
 
     sockets.add(socket.id);
     entry.deviceCount += 1;
-    socket.user.touchPresence("online");
-    await socket.user.save();
-    await updateUserPresence(socket.userId);
-
-    socket.emit(
-      "presence:snapshot",
-      Array.from(presenceStore.entries()).map(([userId, value]) => ({
-        userId,
-        status: value.status,
-        deviceCount: value.deviceCount,
-        lastActiveAt: value.lastActiveAt
-      }))
-    );
 
     socket.on("disconnect", async () => {
       const currentSockets = ensureSocketSet(socket.userId);
@@ -250,6 +237,26 @@ export function createServerEnvironment({ clientUrls, jwtSecret }) {
       socket.presenceStatus = status;
       await updateUserPresence(socket.userId);
     });
+
+    socket.emit(
+      "presence:snapshot",
+      Array.from(presenceStore.entries()).map(([userId, value]) => ({
+        userId,
+        status: value.status,
+        deviceCount: value.deviceCount,
+        lastActiveAt: value.lastActiveAt
+      }))
+    );
+
+    void (async () => {
+      try {
+        socket.user.touchPresence("online");
+        await socket.user.save();
+        await updateUserPresence(socket.userId);
+      } catch (error) {
+        console.error("Failed to initialize socket presence", error);
+      }
+    })();
   });
 
   app.set("io", io);
