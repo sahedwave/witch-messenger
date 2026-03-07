@@ -12,14 +12,56 @@ import messageRoutes from "./routes/messageRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 
 export function createServerEnvironment({ clientUrls, jwtSecret }) {
-  const allowedOrigins = clientUrls;
+  const allowedOrigins = clientUrls.filter(Boolean);
   const app = express();
   const server = http.createServer(app);
   const presenceStore = new Map();
   const presenceSockets = new Map();
 
+  function isAllowedOrigin(origin) {
+    if (!origin) {
+      return true;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      return true;
+    }
+
+    let incomingUrl;
+
+    try {
+      incomingUrl = new URL(origin);
+    } catch {
+      return false;
+    }
+
+    return allowedOrigins.some((allowedOrigin) => {
+      let allowedUrl;
+
+      try {
+        allowedUrl = new URL(allowedOrigin);
+      } catch {
+        return false;
+      }
+
+      if (allowedUrl.protocol !== incomingUrl.protocol) {
+        return false;
+      }
+
+      if (!allowedUrl.hostname.endsWith(".vercel.app")) {
+        return false;
+      }
+
+      const allowedProjectHost = allowedUrl.hostname.replace(/\.vercel\.app$/, "");
+      return (
+        incomingUrl.hostname.endsWith(".vercel.app") &&
+        incomingUrl.hostname.startsWith(`${allowedProjectHost}-`)
+      );
+    });
+  }
+
   const corsOrigin = (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       return callback(null, true);
     }
 

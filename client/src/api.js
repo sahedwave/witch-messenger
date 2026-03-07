@@ -1,16 +1,27 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5001/api";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5001/api" : "");
 
 async function request(path, options = {}) {
   const { token, body, headers, ...rest } = options;
-  const response = await fetch(`${API_URL}${path}`, {
-    ...rest,
-    headers: {
-      ...(body ? { "Content-Type": "application/json" } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...headers
-    },
-    body: body ? JSON.stringify(body) : undefined
-  });
+
+  if (!API_URL) {
+    throw new Error("API URL is not configured for this deployment.");
+  }
+
+  let response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...rest,
+      headers: {
+        ...(body ? { "Content-Type": "application/json" } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...headers
+      },
+      body: body ? JSON.stringify(body) : undefined
+    });
+  } catch (error) {
+    throw new Error("Unable to reach the server. Refresh the page and check the live backend URL/CORS settings.");
+  }
 
   const payload = await response.json().catch(() => ({}));
 
