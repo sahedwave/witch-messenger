@@ -19,6 +19,13 @@ const authLimiter = createRateLimiter({
   message: "Too many authentication attempts. Please wait a minute and try again."
 });
 
+function createPublicError(message, statusCode = 500) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.isPublic = true;
+  return error;
+}
+
 function hashResetCode(code) {
   return crypto.createHash("sha256").update(code).digest("hex");
 }
@@ -65,12 +72,23 @@ async function issueTwoFactorChallenge(user, options = {}) {
   user.twoFactorExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await user.save();
 
-  await sendTransactionalEmail({
+  const delivery = await sendTransactionalEmail({
     to: user.email,
     subject: options.subject || "Your WITCH security code",
     html: `<p>Your security code is <strong>${code}</strong>.</p><p>This code expires in 10 minutes.</p>`,
     text: `Your security code is ${code}. This code expires in 10 minutes.`
-  }).catch(() => null);
+  });
+
+  if (!delivery.delivered && process.env.NODE_ENV === "production") {
+    user.twoFactorCodeHash = null;
+    user.twoFactorExpiresAt = null;
+    await user.save();
+
+    throw createPublicError(
+      options.failureMessage || "Email delivery for security codes is not configured on the server yet.",
+      503
+    );
+  }
 
   return {
     challengeToken: signTwoFactorChallenge(user),
@@ -160,7 +178,8 @@ router.post("/login", authLimiter, async (req, res) => {
 
     if (user.twoFactorEnabled) {
       const { challengeToken, code } = await issueTwoFactorChallenge(user, {
-        subject: "Your WITCH login security code"
+        subject: "Your WITCH login security code",
+        failureMessage: "Two-step verification email is not configured on the server yet."
       });
       return res.json({
         requiresTwoFactor: true,
@@ -172,6 +191,10 @@ router.post("/login", authLimiter, async (req, res) => {
 
     return res.json(await createAuthenticatedSession(user, req));
   } catch (error) {
+    if (error.isPublic) {
+      return res.status(error.statusCode || 500).json({ message: error.message });
+    }
+
     return res.status(500).json({ message: "Unable to log in right now." });
   }
 });
@@ -247,18 +270,32 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
       metadata: { email, ...getRequestContext(req) }
     });
 
-    await sendTransactionalEmail({
+    const delivery = await sendTransactionalEmail({
       to: user.email,
       subject: "Your WITCH password reset code",
       html: `<p>Your password reset code is <strong>${resetCode}</strong>.</p><p>This code expires in 10 minutes.</p>`,
       text: `Your password reset code is ${resetCode}. This code expires in 10 minutes.`
-    }).catch(() => null);
+    });
+
+    if (!delivery.delivered && process.env.NODE_ENV === "production") {
+      user.resetPasswordCodeHash = null;
+      user.resetPasswordExpiresAt = null;
+      await user.save();
+
+      return res.status(503).json({
+        message: "Password recovery email is not configured on the server yet."
+      });
+    }
 
     return res.json({
       ...genericResponse,
       devResetCode: process.env.NODE_ENV === "production" ? undefined : resetCode
     });
   } catch (error) {
+    if (error.isPublic) {
+      return res.status(error.statusCode || 500).json({ message: error.message });
+    }
+
     return res.status(500).json({ message: "Unable to start password recovery right now." });
   }
 });
@@ -352,7 +389,8 @@ router.post("/logout", authMiddleware, async (req, res) => {
 router.post("/2fa/request-setup", authMiddleware, async (req, res) => {
   try {
     const { code } = await issueTwoFactorChallenge(req.user, {
-      subject: "Your WITCH two-step verification setup code"
+      subject: "Your WITCH two-step verification setup code",
+      failureMessage: "Two-step verification email is not configured on the server yet."
     });
 
     await writeAuditLog({
@@ -368,6 +406,10 @@ router.post("/2fa/request-setup", authMiddleware, async (req, res) => {
       devTwoFactorCode: process.env.NODE_ENV === "production" ? undefined : code
     });
   } catch (error) {
+    if (error.isPublic) {
+      return res.status(error.statusCode || 500).json({ message: error.message });
+    }
+
     return res.status(500).json({ message: "Unable to start two-step verification setup." });
   }
 });
