@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 import { api } from "./api";
 import { AuthForm } from "./components/AuthForm";
 import { ConversationPane } from "./components/ConversationPane";
+import { FloatingGlassOrbs } from "./components/FloatingGlassOrbs";
 import { Sidebar } from "./components/Sidebar";
 import { Toasts } from "./components/Toasts";
 
@@ -1441,7 +1442,8 @@ export default function App() {
   if (authBootstrapping) {
     return (
       <>
-        <div className="auth-shell">
+        <div className="auth-shell auth-shell-glass">
+          <FloatingGlassOrbs />
           <div className="auth-card auth-status-card">
             <span className="eyebrow">ALLIED</span>
             <h1>WITCH</h1>
