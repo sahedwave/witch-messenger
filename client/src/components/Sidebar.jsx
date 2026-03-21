@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { Avatar } from "./Avatar";
+import { ChatListItem } from "./ChatListItem";
 
 const sections = [
   ["inbox", "Inbox"],
@@ -179,242 +180,227 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <header className="sidebar-header sidebar-profile">
-        <div className="sidebar-profile-main">
-          <Avatar user={currentUser} size="large" />
-          <div>
-            <span className="eyebrow">Chats</span>
-            <h2>{currentUser.name}</h2>
-            <p>{currentUser.email}</p>
-            {currentUser.statusMessage ? <p>{currentUser.statusMessage}</p> : null}
+      <section className="sidebar-panel sidebar-profile-panel">
+        <header className="sidebar-header sidebar-profile">
+          <div className="sidebar-profile-main">
+            <Avatar user={currentUser} size="large" />
+            <div>
+              <span className="eyebrow">Your profile</span>
+              <h2>{currentUser.name}</h2>
+              <p>{currentUser.email}</p>
+              {currentUser.statusMessage ? <p>{currentUser.statusMessage}</p> : null}
+            </div>
           </div>
-        </div>
 
-        <div className="sidebar-toolbar">
-          <label className="ghost-button file-button">
-            {uploadingAvatar ? "Uploading..." : "Photo"}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/jpg,image/webp"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                  onAvatarChange(file);
-                }
-                event.target.value = "";
-              }}
-            />
-          </label>
-          <button className="ghost-button" type="button" onClick={onToggleTheme}>
-            {theme === "dark" ? "Light" : "Dark"}
-          </button>
+          <div className="sidebar-toolbar">
+            <label className="ghost-button file-button">
+              {uploadingAvatar ? "Uploading..." : "Photo"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) {
+                    onAvatarChange(file);
+                  }
+                  event.target.value = "";
+                }}
+              />
+            </label>
+            <button className="ghost-button" type="button" onClick={onToggleTheme}>
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
           <button className="ghost-button" type="button" onClick={onLogout}>
             Logout
           </button>
         </div>
       </header>
 
-      <div className="sidebar-utilities">
-        <button
-          className={`status-button ${notificationPermission === "granted" ? "is-active" : ""}`}
-          type="button"
-          onClick={onEnableNotifications}
-          disabled={notificationPermission === "unsupported"}
-        >
-          {notificationLabel}
-        </button>
-        <button
-          className="ghost-button subtle-button"
-          type="button"
-          onClick={onLogoutAll}
-          disabled={logoutAllLoading}
-        >
-          {logoutAllLoading ? "Logging out..." : "Logout all"}
-        </button>
-      </div>
-
-      <div className="security-panel">
-        <div className="profile-editor">
-          <input
-            className="security-input"
-            type="text"
-            placeholder="Profile name"
-            value={profileForm.name}
-            onChange={(event) =>
-              setProfileForm((current) => ({ ...current, name: event.target.value }))
-            }
-          />
-          <input
-            className="security-input"
-            type="text"
-            placeholder="Custom status"
-            value={profileForm.statusMessage}
-            onChange={(event) =>
-              setProfileForm((current) => ({ ...current, statusMessage: event.target.value }))
-            }
-          />
-          <div className="sidebar-toolbar">
-            <select
-              className="security-input security-select"
-              value={profileForm.language}
-              onChange={(event) =>
-                setProfileForm((current) => ({ ...current, language: event.target.value }))
-              }
-            >
-              <option value="en">English</option>
-              <option value="bn">Bangla</option>
-            </select>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={profileForm.showLastSeen}
-                onChange={(event) =>
-                  setProfileForm((current) => ({
-                    ...current,
-                    showLastSeen: event.target.checked
-                  }))
-                }
-              />
-              Show last seen
-            </label>
-          </div>
+        <div className="sidebar-utilities">
+          <button
+            className={`status-button ${notificationPermission === "granted" ? "is-active" : ""}`}
+            type="button"
+            onClick={onEnableNotifications}
+            disabled={notificationPermission === "unsupported"}
+          >
+            {notificationLabel}
+          </button>
           <button
             className="ghost-button subtle-button"
             type="button"
-            onClick={() => onSaveProfile(profileForm)}
+            onClick={onLogoutAll}
+            disabled={logoutAllLoading}
           >
-            Save profile
+            {logoutAllLoading ? "Logging out..." : "Logout all"}
           </button>
         </div>
 
-        <p className="security-copy">
-          Security: {currentUser.twoFactorEnabled ? "2-step verification on" : "2-step verification off"}
-        </p>
-        <p className="security-copy">Active sessions: {currentUser.activeSessionCount || 1}</p>
-        <div className="sidebar-toolbar">
-          {currentUser.twoFactorEnabled ? (
+        <div className="security-panel">
+          <div className="sidebar-panel-heading">
+            <strong>Status and settings</strong>
+            <span>Update your profile, privacy, and security preferences.</span>
+          </div>
+
+          <div className="profile-editor">
+            <input
+              className="security-input"
+              type="text"
+              placeholder="Profile name"
+              value={profileForm.name}
+              onChange={(event) =>
+                setProfileForm((current) => ({ ...current, name: event.target.value }))
+              }
+            />
+            <input
+              className="security-input"
+              type="text"
+              placeholder="Custom status"
+              value={profileForm.statusMessage}
+              onChange={(event) =>
+                setProfileForm((current) => ({ ...current, statusMessage: event.target.value }))
+              }
+            />
+            <div className="sidebar-toolbar">
+              <select
+                className="security-input security-select"
+                value={profileForm.language}
+                onChange={(event) =>
+                  setProfileForm((current) => ({ ...current, language: event.target.value }))
+                }
+              >
+                <option value="en">English</option>
+                <option value="bn">Bangla</option>
+              </select>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={profileForm.showLastSeen}
+                  onChange={(event) =>
+                    setProfileForm((current) => ({
+                      ...current,
+                      showLastSeen: event.target.checked
+                    }))
+                  }
+                />
+                Show last seen
+              </label>
+            </div>
             <button
               className="ghost-button subtle-button"
               type="button"
-              onClick={onDisableTwoFactor}
-              disabled={securityActionLoading}
+              onClick={() => onSaveProfile(profileForm)}
             >
-              {securityActionLoading ? "Updating..." : "Disable 2-step"}
+              Save profile
             </button>
-          ) : (
-            <>
+          </div>
+
+          <p className="security-copy">
+            Security: {currentUser.twoFactorEnabled ? "2-step verification on" : "2-step verification off"}
+          </p>
+          <p className="security-copy">Active sessions: {currentUser.activeSessionCount || 1}</p>
+          <div className="sidebar-toolbar">
+            {currentUser.twoFactorEnabled ? (
               <button
                 className="ghost-button subtle-button"
                 type="button"
-                onClick={onRequestTwoFactorSetup}
+                onClick={onDisableTwoFactor}
                 disabled={securityActionLoading}
               >
-                {securityActionLoading ? "Preparing..." : "Get 2-step code"}
+                {securityActionLoading ? "Updating..." : "Disable 2-step"}
               </button>
-              <input
-                type="text"
-                className="security-input"
-                placeholder="Enter security code"
-                value={twoFactorSetupInput}
-                onChange={(event) => onTwoFactorSetupInputChange(event.target.value)}
-              />
-              <button
-                className="ghost-button subtle-button"
-                type="button"
-                onClick={onEnableTwoFactor}
-                disabled={securityActionLoading || !twoFactorSetupInput.trim()}
-              >
-                Enable 2-step
-              </button>
-            </>
-          )}
+            ) : (
+              <>
+                <button
+                  className="ghost-button subtle-button"
+                  type="button"
+                  onClick={onRequestTwoFactorSetup}
+                  disabled={securityActionLoading}
+                >
+                  {securityActionLoading ? "Preparing..." : "Get 2-step code"}
+                </button>
+                <input
+                  type="text"
+                  className="security-input"
+                  placeholder="Enter security code"
+                  value={twoFactorSetupInput}
+                  onChange={(event) => onTwoFactorSetupInputChange(event.target.value)}
+                />
+                <button
+                  className="ghost-button subtle-button"
+                  type="button"
+                  onClick={onEnableTwoFactor}
+                  disabled={securityActionLoading || !twoFactorSetupInput.trim()}
+                >
+                  Enable 2-step
+                </button>
+              </>
+            )}
+          </div>
+          {twoFactorSetupCode ? (
+            <p className="security-copy">
+              Local setup code: <strong>{twoFactorSetupCode}</strong>
+            </p>
+          ) : null}
         </div>
-        {twoFactorSetupCode ? (
-          <p className="security-copy">
-            Local setup code: <strong>{twoFactorSetupCode}</strong>
-          </p>
-        ) : null}
-      </div>
+      </section>
 
-      <div className="sidebar-search">
-        <input
-          ref={searchInputRef}
-          type="search"
-          placeholder="Search contacts"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-        />
-      </div>
+      <section className="sidebar-panel sidebar-conversations-panel">
+        <div className="sidebar-panel-heading">
+          <strong>Messages</strong>
+          <span>Search the directory and move between inbox, requests, and archives.</span>
+        </div>
 
-      <div className="sidebar-sections">
-        {sections.map(([value, label]) => (
-          <button
-            key={value}
-            className={`section-chip ${section === value ? "is-active" : ""}`}
-            type="button"
-            onClick={() => onSelectSection(value)}
-          >
-            {label}
-            {sectionCounts[value] > 0 ? <span>{sectionCounts[value]}</span> : null}
-          </button>
-        ))}
-      </div>
+        <div className="sidebar-search">
+          <input
+            ref={searchInputRef}
+            type="search"
+            placeholder="Search contacts"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </div>
 
-      <div className="contact-list">
-        {contacts.length === 0 ? <p className="panel-state">No other registered users yet.</p> : null}
-        {contacts.length > 0 && filteredContacts.length === 0 ? (
-          <p className="panel-state">No contacts match your search.</p>
-        ) : null}
-        {filteredContacts.length > 0 && visibleContacts.length === 0 ? (
-          <p className="panel-state">Nothing in this section right now.</p>
-        ) : null}
+        <div className="sidebar-sections">
+          {sections.map(([value, label]) => (
+            <button
+              key={value}
+              className={`section-chip ${section === value ? "is-active" : ""}`}
+              type="button"
+              onClick={() => onSelectSection(value)}
+            >
+              {label}
+              {sectionCounts[value] > 0 ? <span>{sectionCounts[value]}</span> : null}
+            </button>
+          ))}
+        </div>
 
-        {visibleContacts.map((contact) => (
-          <button
-            key={contact.id}
-            type="button"
-            className={`contact-card ${contact.id === activeContactId ? "is-active" : ""}`}
-            onClick={() => onSelectContact(contact.id)}
-          >
-            <Avatar user={contact} />
+        <div className="conversation-list-heading">
+          <strong>{sections.find(([value]) => value === section)?.[1] || "Chats"}</strong>
+          <span>{visibleContacts.length} conversation{visibleContacts.length === 1 ? "" : "s"}</span>
+        </div>
 
-            <span className="contact-body">
-              <span className="contact-topline">
-                <strong>{contact.displayName || contact.name}</strong>
-                {contact.isFavorite ? <span className="contact-flag">Favorite</span> : null}
-                {contact.requestState === "pending" ? <span className="contact-flag">Request</span> : null}
-                {contact.requestState === "sent" ? <span className="contact-flag">Sent</span> : null}
-                {contact.isArchived ? <span className="contact-flag">Archived</span> : null}
-                {contact.isRestricted ? <span className="contact-flag">Restricted</span> : null}
-                {contact.isTrashed ? <span className="contact-flag">Trash</span> : null}
-                {contact.isPinned && !contact.isArchived && !contact.isRestricted && !contact.isTrashed ? (
-                  <span className="contact-flag">Pinned</span>
-                ) : null}
-                {contact.isVerified ? <span className="contact-flag">Verified</span> : null}
-                {contact.online ? <span className="online-dot" /> : null}
-              </span>
-              <span className={`contact-preview ${contact.isTyping ? "is-typing" : ""}`}>
-                {formatPreview(contact, currentUser.id)}
-              </span>
-              <span className="contact-subtitle">
-                {contact.isBlocked ? "Blocked" : contact.isMuted ? "Muted" : formatPresence(contact)}
-              </span>
-              {contact.labels?.length ? (
-                <span className="contact-subtitle">{contact.labels.join(" • ")}</span>
-              ) : null}
-            </span>
+        <div className="contact-list">
+          {contacts.length === 0 ? <p className="panel-state">No other registered users yet.</p> : null}
+          {contacts.length > 0 && filteredContacts.length === 0 ? (
+            <p className="panel-state">No contacts match your search.</p>
+          ) : null}
+          {filteredContacts.length > 0 && visibleContacts.length === 0 ? (
+            <p className="panel-state">Nothing in this section right now.</p>
+          ) : null}
 
-            <span className="contact-meta">
-              {contact.lastMessage ? (
-                <span className="contact-time">
-                  {formatRelativeTime(contact.lastMessage.createdAt)}
-                </span>
-              ) : null}
-              {contact.unread > 0 ? <span className="unread-badge">{contact.unread}</span> : null}
-            </span>
-          </button>
-        ))}
-      </div>
+          {visibleContacts.map((contact) => (
+            <ChatListItem
+              key={contact.id}
+              active={contact.id === activeContactId}
+              contact={contact}
+              preview={formatPreview(contact, currentUser.id)}
+              subtitle={contact.isBlocked ? "Blocked" : contact.isMuted ? "Muted" : formatPresence(contact)}
+              timeText={contact.lastMessage ? formatRelativeTime(contact.lastMessage.createdAt) : ""}
+              onSelect={() => onSelectContact(contact.id)}
+            />
+          ))}
+        </div>
+      </section>
     </aside>
   );
 }

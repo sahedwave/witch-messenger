@@ -31,6 +31,6 @@ export async function authMiddleware(req, res, next) {
     req.sessionId = decoded.sessionId;
     return next();
   } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token." });
+    return res.status(401).json({ message: "Token expired." });
   }
 }

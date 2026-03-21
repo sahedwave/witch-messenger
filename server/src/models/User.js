@@ -54,6 +54,33 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    workspaceEnabled: {
+      type: Boolean,
+      default: true
+    },
+    workspaceRole: {
+      type: String,
+      enum: ["owner", "manager", "finance", "warehouse", "staff"],
+      default: undefined
+    },
+    workspaceRoles: {
+      type: [
+        {
+          type: String,
+          enum: ["viewer", "approver", "finance_staff", "accountant"]
+        }
+      ],
+      default: undefined
+    },
+    workspaceModules: {
+      type: [
+        {
+          type: String,
+          enum: ["finance", "warehouse"]
+        }
+      ],
+      default: undefined
+    },
     lastActiveAt: {
       type: Date,
       default: null
@@ -114,7 +141,41 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
       select: false
-    }
+    },
+    pushSubscriptions: [
+      {
+        endpoint: {
+          type: String,
+          required: true
+        },
+        expirationTime: {
+          type: Date,
+          default: null
+        },
+        keys: {
+          p256dh: {
+            type: String,
+            required: true
+          },
+          auth: {
+            type: String,
+            required: true
+          }
+        },
+        userAgent: {
+          type: String,
+          default: ""
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now
+        },
+        lastUsedAt: {
+          type: Date,
+          default: Date.now
+        }
+      }
+    ]
   },
   {
     timestamps: true
@@ -152,6 +213,72 @@ userSchema.methods.registerSession = function registerSession(session) {
 
 userSchema.methods.revokeSession = function revokeSession(sessionId) {
   this.activeSessions = (this.activeSessions || []).filter((session) => session.sessionId !== sessionId);
+};
+
+userSchema.methods.getWorkspaceRole = function getWorkspaceRole() {
+  if (this.workspaceRole) {
+    return this.workspaceRole;
+  }
+
+  if (this.isAdmin) {
+    return "owner";
+  }
+
+  return "manager";
+};
+
+userSchema.methods.getWorkspaceModules = function getWorkspaceModules() {
+  if (Array.isArray(this.workspaceModules) && this.workspaceModules.length > 0) {
+    return [...new Set(this.workspaceModules)];
+  }
+
+  const role = this.getWorkspaceRole();
+  if (role === "finance") {
+    return ["finance"];
+  }
+
+  if (role === "warehouse") {
+    return ["warehouse"];
+  }
+
+  return ["finance", "warehouse"];
+};
+
+userSchema.methods.getWorkspaceRoles = function getWorkspaceRoles() {
+  if (Array.isArray(this.workspaceRoles) && this.workspaceRoles.length > 0) {
+    return [...new Set(this.workspaceRoles)];
+  }
+
+  const role = this.getWorkspaceRole();
+  if (role === "finance") {
+    return ["finance_staff"];
+  }
+
+  if (role === "owner" || role === "manager") {
+    return ["approver", "finance_staff"];
+  }
+
+  if (role === "accountant") {
+    return ["accountant"];
+  }
+
+  if (role === "staff") {
+    return ["viewer"];
+  }
+
+  return [];
+};
+
+userSchema.methods.hasWorkspaceRole = function hasWorkspaceRole(role) {
+  return this.getWorkspaceRoles().includes(role);
+};
+
+userSchema.methods.hasWorkspaceModuleAccess = function hasWorkspaceModuleAccess(module) {
+  if (this.workspaceEnabled === false) {
+    return false;
+  }
+
+  return this.getWorkspaceModules().includes(module);
 };
 
 export const User = mongoose.model("User", userSchema);

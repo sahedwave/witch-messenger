@@ -7,6 +7,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "seed:demo": "node scripts/seedDemoUsers.js",
+    "migrate:finance-workspace": "node scripts/migrateFinanceWorkspace.js",
     "backup": "sh scripts/backup.sh",
     "restore": "sh scripts/restore.sh",
     "test": "node --test"
@@ -19,7 +20,10 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.12.1",
-    "socket.io": "^4.8.1"
+    "pdfkit": "^0.18.0",
+    "plaid": "^41.4.0",
+    "socket.io": "^4.8.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "mongodb-memory-server": "^10.1.4",

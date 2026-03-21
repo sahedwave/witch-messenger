@@ -112,7 +112,11 @@ router.get("/:contactId", async (req, res) => {
     }
 
     const query = {
-      conversationKey: buildConversationKey(req.userId, contactId)
+      conversationKey: buildConversationKey(req.userId, contactId),
+      $or: [
+        { autoDeleteAt: null },
+        { autoDeleteAt: { $gt: new Date() } }
+      ]
     };
 
     if (before) {
@@ -169,12 +173,18 @@ router.post("/:contactId", messageSendLimiter, async (req, res) => {
     const replyToId = req.body.replyToId || null;
     const forwardMessageId = req.body.forwardMessageId || null;
     const autoDeleteSeconds = Number.parseInt(req.body.autoDeleteSeconds || "0", 10);
+    const isSnap = Boolean(req.body.isSnap);
+    const snapViewSeconds = isSnap
+      ? autoDeleteSeconds <= 0
+        ? 0
+        : Math.min(Math.max(autoDeleteSeconds, 1), 60)
+      : 0;
 
     if (!mongoose.isValidObjectId(contactId)) {
       return res.status(400).json({ message: "Invalid contact id." });
     }
 
-    const attachmentError = validateAttachmentData(attachment);
+    const attachmentError = validateAttachmentData(attachment, { isSnap });
     if (attachmentError) {
       return res.status(400).json({ message: attachmentError });
     }
@@ -250,8 +260,13 @@ router.post("/:contactId", messageSendLimiter, async (req, res) => {
       linkPreview: extractLinkPreview(nextText),
       replyTo: replyTo?._id || null,
       forwardedFrom: forwardMessage ? forwardMessage.sender : null,
+      isSnap,
+      snapOpenedAt: null,
+      snapViewSeconds,
       autoDeleteAt:
-        autoDeleteSeconds > 0 ? new Date(Date.now() + Math.min(autoDeleteSeconds, 86400) * 1000) : null,
+        !isSnap && autoDeleteSeconds > 0
+          ? new Date(Date.now() + Math.min(autoDeleteSeconds, 86400) * 1000)
+          : null,
       attachment: nextAttachment
         ? {
             dataUrl: nextAttachment.dataUrl,
@@ -295,6 +310,7 @@ router.post("/:contactId", messageSendLimiter, async (req, res) => {
       metadata: {
         contactId,
         hasAttachment: Boolean(nextAttachment),
+        isSnap,
         replyToId,
         forwardMessageId
       }
@@ -315,7 +331,11 @@ router.get("/:contactId/export", async (req, res) => {
     }
 
     const messages = await Message.find({
-      conversationKey: buildConversationKey(req.userId, contactId)
+      conversationKey: buildConversationKey(req.userId, contactId),
+      $or: [
+        { autoDeleteAt: null },
+        { autoDeleteAt: { $gt: new Date() } }
+      ]
     })
       .sort({ createdAt: 1 })
       .populate({
@@ -611,6 +631,54 @@ router.post("/:contactId/seen", async (req, res) => {
     return res.json({ updatedIds: serializedIds, seenAt });
   } catch (error) {
     return res.status(500).json({ message: "Unable to update seen status." });
+  }
+});
+
+router.post("/:messageId/open-snap", async (req, res) => {
+  try {
+    const { messageId } = req.params;
+
+    if (!mongoose.isValidObjectId(messageId)) {
+      return res.status(400).json({ message: "Invalid message id." });
+    }
+
+    const message = await Message.findById(messageId);
+    if (!message) {
+      return res.status(404).json({ message: "Message not found." });
+    }
+
+    const isParticipant = [message.sender.toString(), message.recipient.toString()].includes(
+      req.userId.toString()
+    );
+
+    if (!isParticipant || !message.isSnap || message.deletedAt || !message.attachment?.dataUrl) {
+      return res.status(403).json({ message: "This snap cannot be opened." });
+    }
+
+    if (message.recipient.toString() === req.userId.toString() && !message.autoDeleteAt) {
+      const openedAt = new Date();
+      const seconds =
+        typeof message.snapViewSeconds === "number" ? message.snapViewSeconds : 10;
+      const normalizedSeconds =
+        seconds <= 0 ? 0 : Math.min(Math.max(seconds, 1), 60);
+      message.snapOpenedAt = openedAt;
+      message.autoDeleteAt =
+        normalizedSeconds > 0
+          ? new Date(openedAt.getTime() + normalizedSeconds * 1000)
+          : null;
+      await message.save();
+    }
+
+    const populatedMessage = await populateMessage(message._id);
+    const serialized = serializeMessage(populatedMessage);
+    const io = req.app.get("io");
+
+    io.to(serialized.sender.id).emit("message:updated", serialized);
+    io.to(serialized.recipient.id).emit("message:updated", serialized);
+
+    return res.json(serialized);
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to open snap." });
   }
 });
 
