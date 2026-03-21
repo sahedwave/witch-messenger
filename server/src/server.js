@@ -2,8 +2,10 @@ import dotenv from "dotenv";
 
 import { createServerEnvironment } from "./app.js";
 import { connectDB } from "./config/db.js";
+import { validateProductionEnv } from "./validateEnv.js";
 
 dotenv.config();
+validateProductionEnv();
 
 const {
   PORT = 5001,
@@ -16,13 +18,14 @@ if (!JWT_SECRET) {
   throw new Error("JWT_SECRET is required.");
 }
 
-const { server } = createServerEnvironment({
+const { server, startBackgroundJobs } = createServerEnvironment({
   clientUrls: CLIENT_URL.split(",").map((value) => value.trim()),
   jwtSecret: JWT_SECRET
 });
 
 async function startServer() {
   await connectDB(MONGODB_URI);
+  startBackgroundJobs();
   server.listen(PORT, () => {
     console.log(`Server listening on http://localhost:${PORT}`);
   });

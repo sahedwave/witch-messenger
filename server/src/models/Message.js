@@ -52,6 +52,18 @@ const messageSchema = new mongoose.Schema(
         default: 0
       }
     },
+    isSnap: {
+      type: Boolean,
+      default: false
+    },
+    snapOpenedAt: {
+      type: Date,
+      default: null
+    },
+    snapViewSeconds: {
+      type: Number,
+      default: 0
+    },
     seenAt: {
       type: Date,
       default: null

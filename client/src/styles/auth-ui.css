@@ -12,7 +12,8 @@
   --light-alpha: 0.18;
   --light-card-alpha: 0.15;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   isolation: isolate;
   background:
     radial-gradient(circle at 18% 18%, rgba(95, 131, 255, 0.18), transparent 22%),

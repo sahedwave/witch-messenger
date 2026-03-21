@@ -8,6 +8,11 @@ import { User } from "../models/User.js";
 import { writeAuditLog } from "../utils/audit.js";
 import { buildConversationKey } from "../utils/conversationKey.js";
 import {
+  addPushSubscriptionToUser,
+  getPushPublicKey,
+  removePushSubscriptionFromUser
+} from "../utils/pushNotifications.js";
+import {
   clearConversationShelves,
   getConversationState,
   getOrCreateConversation,
@@ -172,6 +177,39 @@ router.patch("/me/profile", async (req, res) => {
     return res.json({ user: serializeUser(req.user, { viewerId: req.userId }) });
   } catch (error) {
     return res.status(500).json({ message: "Unable to update profile." });
+  }
+});
+
+router.get("/me/push-config", async (_req, res) => {
+  return res.json({
+    publicKey: getPushPublicKey()
+  });
+});
+
+router.post("/me/push-subscriptions", async (req, res) => {
+  try {
+    await addPushSubscriptionToUser(req.user, req.body.subscription, {
+      userAgent: req.get("user-agent") || ""
+    });
+
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ message: error.message || "Unable to save push subscription." });
+  }
+});
+
+router.delete("/me/push-subscriptions", async (req, res) => {
+  try {
+    const endpoint = req.body.endpoint;
+
+    if (!endpoint) {
+      return res.status(400).json({ message: "Subscription endpoint is required." });
+    }
+
+    await removePushSubscriptionFromUser(req.user, endpoint);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to remove push subscription." });
   }
 });
 
