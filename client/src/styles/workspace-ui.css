@@ -2,7 +2,7 @@
   width: min(1540px, 100%);
   min-height: 0;
   height: min(860px, calc(100dvh - 32px));
-  grid-template-columns: 194px 270px minmax(0, 1fr) 54px;
+  grid-template-columns: 194px 270px minmax(0, 1fr) minmax(84px, 96px);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 251, 255, 0.98)),
     radial-gradient(circle at top left, rgba(98, 162, 255, 0.08), transparent 22%);
@@ -24,7 +24,17 @@
 }
 
 .app-frame.rail-collapsed {
-  grid-template-columns: 74px 270px minmax(0, 1fr) 54px;
+  grid-template-columns: 74px 270px minmax(0, 1fr) minmax(84px, 96px);
+}
+
+.app-frame.action-panel-expanded {
+  grid-template-columns: 194px 270px minmax(0, 1fr) minmax(84px, 96px);
+  isolation: isolate;
+}
+
+.app-frame.rail-collapsed.action-panel-expanded {
+  grid-template-columns: 74px 270px minmax(0, 1fr) minmax(84px, 96px);
+  isolation: isolate;
 }
 
 .workspace-panel-backdrop {
@@ -105,6 +115,8 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 253, 0.98));
   overflow-x: hidden;
   overflow-y: hidden;
+  position: relative;
+  z-index: 1;
 }
 
 .chat-action-panel {
@@ -113,7 +125,45 @@
   padding: 10px 4px;
   border-left: 1px solid var(--border);
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 253, 0.98));
-  align-items: center;
+  align-items: stretch;
+  overflow-x: visible;
+  overflow-y: auto;
+  z-index: 50;
+}
+
+.app-frame.action-panel-expanded > .chat-action-panel {
+  z-index: 30;
+  overflow: visible;
+}
+
+.chat-action-active-flyout {
+  position: fixed;
+  top: 72px;
+  right: 22px;
+  width: min(420px, calc(100vw - 44px));
+  max-width: min(420px, calc(100vw - 44px));
+  max-height: calc(100vh - 96px);
+  z-index: 2147483647;
+  pointer-events: auto;
+}
+
+.chat-action-active-flyout.is-more-panel {
+  width: min(208px, calc(100vw - 44px));
+  max-width: min(208px, calc(100vw - 44px));
+}
+
+.chat-action-active-flyout .rail-flyout {
+  position: static;
+  right: auto;
+  top: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    0 24px 42px rgba(16, 35, 63, 0.18);
 }
 
 .chat-action-panel-overlay {
@@ -245,6 +295,8 @@
 .chat-action-contact p,
 .chat-action-empty p {
   color: var(--text-muted);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .workspace-rail.is-collapsed {
@@ -981,6 +1033,7 @@
 .ramadan-window-shell {
   min-height: 100vh;
   padding: 28px;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(22, 163, 74, 0.14), transparent 32%),
     radial-gradient(circle at top right, rgba(0, 132, 255, 0.12), transparent 28%),
@@ -1336,6 +1389,7 @@
 .task-window-shell {
   min-height: 100vh;
   padding: 28px;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 28%),
     radial-gradient(circle at top right, rgba(34, 197, 94, 0.1), transparent 24%),
@@ -2320,6 +2374,7 @@
 .project-window-shell {
   min-height: 100vh;
   padding: 28px;
+  overflow-y: auto;
   background:
     radial-gradient(circle at top left, rgba(124, 103, 238, 0.14), transparent 32%),
     linear-gradient(180deg, #eef5ff 0%, #f9fbff 100%);
@@ -3380,6 +3435,13 @@
 
 .conversation-column-topline.compact.is-inline {
   gap: 8px;
+}
+
+.conversation-column-topline.compact.is-inline .conversation-new-chat.compact {
+  margin-left: auto;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 20;
 }
 
 .conversation-head-actions {
@@ -5036,6 +5098,8 @@
   display: grid;
   gap: 16px;
   width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .chat-action-card.compact {
@@ -5079,7 +5143,7 @@
   top: 0;
   bottom: auto;
   width: 176px;
-  z-index: 10;
+  z-index: 60;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.86),
     0 20px 32px rgba(16, 35, 63, 0.12);
@@ -5948,6 +6012,8 @@
 
 .chat-action-panel-empty-shell {
   display: grid;
+  width: 100%;
+  min-width: 0;
 }
 
 .chat-action-panel-sheet .calendar-flyout {
@@ -6473,6 +6539,14 @@
   }
 
   .app-frame.rail-collapsed {
+    grid-template-columns: 70px 262px minmax(0, 1fr) 56px;
+  }
+
+  .app-frame.action-panel-expanded {
+    grid-template-columns: 188px 262px minmax(0, 1fr) 56px;
+  }
+
+  .app-frame.rail-collapsed.action-panel-expanded {
     grid-template-columns: 70px 262px minmax(0, 1fr) 56px;
   }
 

@@ -188,7 +188,7 @@ export function ConversationListPane({
           </div>
 
           <button
-            className="ghost-button conversation-new-chat compact"
+            className="ghost-button conversation-new-chat compact relative z-10 shrink-0"
             type="button"
             onClick={() => setActiveTab("messages")}
           >

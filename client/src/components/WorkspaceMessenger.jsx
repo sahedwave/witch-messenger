@@ -1,159 +1,18528 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { api } from "../api";
-import { normalizeCurrencyCode } from "../utils/currency.js";
-import {
-  FILTER_TABS,
-  FINANCE_CURRENCY_OPTIONS,
-  FINANCE_MEDIA_SECTIONS,
-  SHIPMENT_STEPS,
-  WAREHOUSE_SHIPMENT_STATUS_OPTIONS
-} from "./workspace/WorkspaceMessenger.constants.js";
-import {
-  NotificationContext,
-  ThreadListContext,
-  UnreadContext,
-  avatarForThread,
-  bucketEntries,
-  buildFinancePermissions,
-  buildNotificationToneStyles,
-  canAccessWorkspaceScope,
-  canSeeBot,
-  canSeeThread,
-  computeTaxPreview,
-  displayTabLabel,
-  downloadCsvFile,
-  financeCloseReadinessTone,
-  financeGuardrailMessage,
-  financeMetricMeta,
-  financeStatusBadgeStyle,
-  financeStatusToneFromState,
-  financeThreadDescriptor,
-  formatAccountingEntryStatusLabel,
-  formatAccountingPeriodLabel,
-  formatAccountingReportVariantLabel,
-  formatDate,
-  formatDateTime,
-  formatFinanceCloseReadinessLabel,
-  formatFinanceControlStatusLabel,
-  formatMoney,
-  formatMoneyDisplay,
-  formatPaymentMethod,
-  formatPeriodKeyLabel,
-  formatTime,
-  formatTimeAgo,
-  getWorkspaceNotificationTone,
-  isCoarsePointer,
-  isFinanceMode,
-  isWithinReportingWindow,
-  isWorkspaceBotMode,
-  loadPlaidLinkScript,
-  messagePreview,
-  metricTone,
-  metricDescription,
-  moveThreadToTop,
-  normalizeWorkspaceRoles,
-  parseBankCsv,
-  parseFinanceHashRoute,
-  readFileAsDataUrl,
-  relativeTime,
-  resolveFinanceAccountingState,
-  resolveWorkspaceDefaultCurrency,
-  roleBadgeStyle,
-  roundMoney,
-  sanitizeDownloadPart,
-  sortThreads,
-  sumCurrencyBucketInBaseCurrency,
-  todayDateInputValue,
-  uid,
-  updateFinanceHashRoute,
-  useNotifications,
-  useThreadList,
-  useUnread,
-  visibleCommandItems,
-  workspaceNotificationIcon
-} from "./workspace/WorkspaceMessenger.utils.js";
-import {
-  applyRealFinanceRecords,
-  buildFinanceMessagesFromRecords,
-  buildFinancePayloadFromState,
-  formatFinanceExpenseStatusLabel,
-  isFinanceRecurringDue,
-  mapFinanceExpenseRecord,
-  mapFinanceInvoiceRecord,
-  normalizeFinanceExpenseStatus,
-  normalizeFinanceInvoiceStatus
-} from "./workspace/finance/finance-record-mappers.js";
-import {
-  applyRealWarehouseRecords,
-  formatPurchaseOrderStatusLabel,
-  formatWarehouseQuantity,
-  formatWarehouseQuantityDelta,
-  getWarehouseReorderThreshold,
-  isWarehouseLowStock,
-  mapPurchaseOrderRecord,
-  mapWarehouseAlertRecord,
-  mapWarehouseOrderRecord,
-  mapWarehouseProductRecord,
-  normalizeWarehouseAlertStatus,
-  normalizeWarehouseOrderStatus,
-  serializeWarehouseOrderStateEntry,
-  serializeWarehouseProductStateEntry,
-  shipmentStepIsActive,
-  warehouseMovementTypeLabel,
-  warehouseProductStatusLabel,
-  warehouseShipmentTypeLabel,
-  warehouseStatusLabel,
-  warehouseStockSignalLabel
-} from "./workspace/warehouse/warehouse-record-mappers.js";
-import Sidebar from "./workspace/layout/Sidebar.jsx";
-import ThreadListPanel from "./workspace/layout/ThreadListPanel.jsx";
-import WorkspaceNotificationMenu from "./workspace/menus/WorkspaceNotificationMenu.jsx";
-import QuickActionMenu from "./workspace/menus/QuickActionMenu.jsx";
-import ToolbarOverflowMenu from "./workspace/menus/ToolbarOverflowMenu.jsx";
-import FinanceEntryModal from "./workspace/finance/FinanceEntryModal.jsx";
-import InvoicePaymentModal from "./workspace/finance/InvoicePaymentModal.jsx";
-import {
-  FinanceActionLogList,
-  FinanceActivityFeed,
-  FinanceBalanceSheetPanel,
-  FinanceCurrencyBreakdown,
-  FinanceFilterToolbar,
-  FinanceHeroStrip,
-  FinanceOperationalInsights,
-  FinanceQueueSummary,
-  FinanceRecordDigest,
-  FinanceRelationshipSummary,
-  FinanceReportingSnapshot,
-  buildFinanceApprovalSections,
-  buildFinanceQueueSummary
-} from "./workspace/finance/FinanceSummaryPanels.jsx";
-import {
-  FinanceExpenseDetailPanel,
-  FinanceInvoiceDetailPanel
-} from "./workspace/finance/FinanceDetailPanels.jsx";
-import FinanceAdvancedReportsPanel from "./workspace/finance/FinanceAdvancedReportsPanel.jsx";
-import FinanceContactManagerPanel from "./workspace/finance/FinanceContactManagerPanel.jsx";
-import FinanceBankingPanel from "./workspace/finance/FinanceBankingPanel.jsx";
-import WarehouseAnalyticsPanel from "./workspace/warehouse/WarehousePanels.jsx";
-import { ExpenseMessageCard, InvoiceMessageCard, LinkedWorkMessageCard, ReportMessageCard } from "./workspace/messages/FinanceMessageCards.jsx";
-import { MessageBubble, NotificationToasts, useMessageInteractionState } from "./workspace/messages/MessageInteraction.jsx";
-import FinancePayrollPanel from "./workspace/finance/FinancePayrollPanel.jsx";
-import FinanceAccountantPortalPanel from "./workspace/finance/FinanceAccountantPortalPanel.jsx";
-import {
-  PlatformOwnerProvisioningPanel,
-  WorkspaceAdminOverviewPanel,
-  WorkspaceMemberAccessPanel
-} from "./workspace/admin/WorkspaceAdminPanels.jsx";
-import WorkspaceOverviewPanel from "./workspace/overview/WorkspaceOverviewPanel.jsx";
-import WorkspacePane from "./workspace/layout/WorkspacePane.jsx";
-import useWorkspaceFinanceData from "./workspace/hooks/useWorkspaceFinanceData.js";
-import useWorkspaceBankingAndPayroll from "./workspace/hooks/useWorkspaceBankingAndPayroll.js";
-import useWorkspaceNavigationAndThreads, { useWorkspaceNavigationActions } from "./workspace/hooks/useWorkspaceNavigationAndThreads.js";
-import { useWorkspaceAdminAndPlatformActions, useWorkspaceAdminAndPlatformLoaders } from "./workspace/hooks/useWorkspaceAdminAndPlatform.js";
+import { STATIC_EXCHANGE_RATES, SUPPORTED_CURRENCY_CODES, convertAmount, normalizeCurrencyCode } from "../utils/currency.js";
+import { AnimatePresence, motion } from "framer-motion";
+import { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
+// ----- workspace/WorkspaceMessenger.constants.js -----
+const NAV_ITEMS = [
+  { id: "home", label: "Overview", icon: "⌂" },
+  { id: "inbox", label: "Inbox", icon: "✉" },
+  { id: "users", label: "Users", icon: "◉" },
+  { id: "finances", label: "Finances", icon: "💰" },
+  { id: "warehouse", label: "Warehouse", icon: "📦" },
+  { id: "tasks", label: "Task Manager", icon: "☑" },
+  { id: "projects", label: "Project Management", icon: "▣" }
+];
+
+const COMMAND_ITEMS = [
+  {
+    command: "/invoice #[number]",
+    description: "Render an invoice approval card in FinanceBot.",
+    example: "/invoice 304",
+    roles: ["finance", "owner", "manager"],
+    scope: "finance"
+  },
+  {
+    command: "/stock [item-name]",
+    description: "Render a stock status card in WareBot.",
+    example: "/stock cement",
+    roles: ["warehouse", "owner", "manager"],
+    scope: "warehouse"
+  },
+  {
+    command: "/expense [amount] [category]",
+    description: "Render an expense log card in FinanceBot.",
+    example: "/expense 500 travel",
+    roles: ["finance", "owner", "manager"],
+    scope: "finance"
+  },
+  {
+    command: "/order #[number]",
+    description: "Render a shipment tracking card in WareBot.",
+    example: "/order 9002",
+    roles: ["warehouse", "owner", "manager"],
+    scope: "warehouse"
+  },
+  {
+    command: "/report",
+    description: "Render a mini finance summary card.",
+    example: "/report",
+    roles: ["finance", "owner", "manager"],
+    scope: "finance"
+  }
+];
+
+const FILTER_TABS = ["Chat", "Media", "Links", "Pinned"];
+const ROLE_BOT_VISIBILITY = {
+  finance: ["finance"],
+  warehouse: ["warehouse"],
+  owner: ["finance", "warehouse"],
+  manager: ["finance", "warehouse"]
+};
+
+const SHIPMENT_STEPS = ["Packed", "Dispatched", "In Transit", "Delivered"];
+const WAREHOUSE_SHIPMENT_STATUS_OPTIONS = [
+  { value: "pending", label: "Pending" },
+  { value: "packed", label: "Packed" },
+  { value: "dispatched", label: "Dispatched" },
+  { value: "in_transit", label: "In transit" },
+  { value: "delayed", label: "Delayed" },
+  { value: "delivered", label: "Delivered" }
+];
+const FINANCE_WORKSPACE_ROLES = ["viewer", "approver", "finance_staff", "accountant"];
+const PRIORITY_FINANCE_CURRENCIES = ["USD", "EUR", "GBP", "CAD", "AUD"];
+const FINANCE_CURRENCY_OPTIONS = [
+  ...PRIORITY_FINANCE_CURRENCIES,
+  ...SUPPORTED_CURRENCY_CODES.filter((currency) => !PRIORITY_FINANCE_CURRENCIES.includes(currency)).sort((left, right) =>
+    left.localeCompare(right)
+  )
+];
+const REACTIONS = [
+  { emoji: "❤️", label: "Love" },
+  { emoji: "😂", label: "Haha" },
+  { emoji: "😮", label: "Wow" },
+  { emoji: "😢", label: "Sad" },
+  { emoji: "👍", label: "Like" },
+  { emoji: "🔥", label: "Fire" }
+];
+const FINANCE_MEDIA_SECTIONS = [
+  { id: "reports", label: "Reports" },
+  { id: "invoices", label: "Invoices" },
+  { id: "expenses", label: "Expenses" },
+  { id: "customers", label: "Customers" },
+  { id: "payments", label: "Payments" },
+  { id: "banks", label: "Banking" },
+  { id: "payroll", label: "Payroll" }
+];
+
+// ----- workspace/WorkspaceMessenger.utils.js -----
+const ThreadListContext = createContext(null);
+const UnreadContext = createContext(null);
+const NotificationContext = createContext(null);
+
+function useThreadList() {
+  return useContext(ThreadListContext);
+}
+
+function useUnread() {
+  return useContext(UnreadContext);
+}
+
+function useNotifications() {
+  return useContext(NotificationContext);
+}
+
+function uid(prefix) {
+  return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Unable to read the selected file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatTime(isoString) {
+  return new Intl.DateTimeFormat("en-US", {
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(isoString));
+}
+
+function formatDate(isoString) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(isoString));
+}
+
+function formatDateTime(isoString) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(isoString));
+}
+
+function formatTimeAgo(isoString) {
+  if (!isoString) {
+    return "Just now";
+  }
+
+  const timestamp = new Date(isoString).getTime();
+  if (Number.isNaN(timestamp)) {
+    return "Just now";
+  }
+
+  const elapsedMs = Math.max(0, Date.now() - timestamp);
+  const minute = 60000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+
+  if (elapsedMs < minute) {
+    return "Just now";
+  }
+
+  if (elapsedMs < hour) {
+    const minutes = Math.max(1, Math.floor(elapsedMs / minute));
+    return `${minutes}m ago`;
+  }
+
+  if (elapsedMs < day) {
+    const hours = Math.max(1, Math.floor(elapsedMs / hour));
+    return `${hours}h ago`;
+  }
+
+  const days = Math.max(1, Math.floor(elapsedMs / day));
+  return `${days}d ago`;
+}
+
+function todayDateInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function resolveWorkspaceDefaultCurrency(activeWorkspace = null, workspaceSettings = null) {
+  return normalizeCurrencyCode(
+    workspaceSettings?.summary?.capabilities?.defaultCurrency ||
+      activeWorkspace?.defaultCurrency ||
+      "USD"
+  );
+}
+
+function normalizePlatformWorkspaceMember(entry) {
+  const user = entry?.user || {};
+  const membership = entry?.membership || {};
+
+  return {
+    id: user.id || membership.userId || "",
+    membershipId: membership.id || null,
+    name: user.name || membership.email || "Workspace member",
+    email: user.email || membership.email || "",
+    isAdmin: Boolean(user.isAdmin),
+    workspaceEnabled: membership.status !== "suspended",
+    workspaceRole: membership.workspaceRole || "member",
+    workspaceRoles: Array.isArray(membership.financeRoles) ? membership.financeRoles : [],
+    workspaceModules: Array.isArray(membership.modules) ? membership.modules : [],
+    presenceStatus: user.presenceStatus || "offline",
+    lastActiveAt: user.lastActiveAt || null,
+    membershipStatus: membership.status || "active"
+  };
+}
+
+function buildLinkedWorkExcerpt(message) {
+  return String(message?.content || "").trim().replace(/\s+/g, " ").slice(0, 400);
+}
+
+function roundMoney(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function computeTaxPreview(amount, taxRate) {
+  const subtotal = Number.parseFloat(amount || 0);
+  const safeSubtotal = Number.isFinite(subtotal) ? subtotal : 0;
+  const parsedTaxRate = Number.parseFloat(taxRate || 0);
+  const safeTaxRate = Number.isFinite(parsedTaxRate) ? Math.max(0, parsedTaxRate) : 0;
+  const taxAmount = roundMoney((safeSubtotal * safeTaxRate) / 100);
+  const totalWithTax = roundMoney(safeSubtotal + taxAmount);
+
+  return {
+    subtotal: roundMoney(safeSubtotal),
+    taxRate: roundMoney(safeTaxRate),
+    taxAmount,
+    totalWithTax
+  };
+}
+
+function sumCurrencyBucketInBaseCurrency(bucket = {}, baseCurrency = "USD") {
+  const normalizedBase = normalizeCurrencyCode(baseCurrency || "USD");
+  return roundMoney(
+    Object.entries(bucket || {}).reduce(
+      (sum, [currency, amount]) => sum + convertAmount(amount, currency, normalizedBase, STATIC_EXCHANGE_RATES),
+      0
+    )
+  );
+}
+
+function bucketEntries(value = {}) {
+  return Object.entries(value || {})
+    .filter(([currency, amount]) => currency && Number.isFinite(Number(amount)))
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+function downloadCsvFile(filename, rowsOrColumns = [], maybeRows = null) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const content = Array.isArray(maybeRows)
+    ? [
+        rowsOrColumns.map((column) => escapeCsvValue(column.label)).join(","),
+        ...maybeRows.map((row) =>
+          rowsOrColumns.map((column) => escapeCsvValue(row[column.key])).join(",")
+        )
+      ].join("\n")
+    : rowsOrColumns
+        .map((row) =>
+          row
+            .map((cell) => {
+              const text = String(cell ?? "");
+              return /[",\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+            })
+            .join(",")
+        )
+        .join("\n");
+
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+function parseBankCsv(csvText = "") {
+  const rows = String(csvText || "")
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+
+  if (!rows.length) {
+    return [];
+  }
+
+  const parseRow = (row) => {
+    const values = [];
+    let current = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < row.length; index += 1) {
+      const char = row[index];
+      const next = row[index + 1];
+      if (char === "\"") {
+        if (inQuotes && next === "\"") {
+          current += "\"";
+          index += 1;
+          continue;
+        }
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (char === "," && !inQuotes) {
+        values.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+
+    values.push(current.trim());
+    return values;
+  };
+
+  const headers = parseRow(rows[0]).map((header) => String(header || "").trim().toLowerCase());
+
+  return rows.slice(1).map((row) => {
+    const values = parseRow(row);
+    const entry = Object.fromEntries(headers.map((header, index) => [header, values[index] || ""]));
+    return {
+      transactionDate: entry.date || entry.transactiondate || entry.posted || todayDateInputValue(),
+      description: entry.description || entry.memo || entry.name || "",
+      amount: entry.amount || entry.value || "0",
+      currency: entry.currency || "USD",
+      category: entry.category || "other",
+      providerTransactionId: entry.providertransactionid || entry.id || ""
+    };
+  });
+}
+
+function loadPlaidLinkScript() {
+  if (typeof window === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  if (window.Plaid) {
+    return Promise.resolve(window.Plaid);
+  }
+
+  const existing = document.querySelector('script[data-plaid-link="true"]');
+  if (existing) {
+    return new Promise((resolve, reject) => {
+      existing.addEventListener("load", () => resolve(window.Plaid || null), { once: true });
+      existing.addEventListener("error", () => reject(new Error("Unable to load Plaid Link.")), { once: true });
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.plaid.com/link/v2/stable/link-initialize.js";
+    script.async = true;
+    script.dataset.plaidLink = "true";
+    script.onload = () => resolve(window.Plaid || null);
+    script.onerror = () => reject(new Error("Unable to load Plaid Link."));
+    document.head.appendChild(script);
+  });
+}
+
+function parseFinanceHashRoute() {
+  const hash = typeof window !== "undefined" ? String(window.location.hash || "") : "";
+  const match = hash.match(/^#\/finance\/(invoices|expenses)\/([^/?#]+)/i);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    section: match[1].toLowerCase(),
+    recordId: decodeURIComponent(match[2])
+  };
+}
+
+function updateFinanceHashRoute(section, recordId) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  if (!section || !recordId) {
+    if (window.location.hash.startsWith("#/finance/")) {
+      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}`);
+    }
+    return;
+  }
+
+  window.history.pushState(null, "", `${window.location.pathname}${window.location.search}#/finance/${section}/${encodeURIComponent(recordId)}`);
+}
+
+function formatPaymentMethod(method = "") {
+  if (!method) {
+    return "Manual entry";
+  }
+
+  return String(method)
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function isWithinReportingWindow(isoString, window = "all") {
+  if (!isoString || window === "all") {
+    return true;
+  }
+
+  const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return false;
+  }
+
+  const now = Date.now();
+  const ageMs = now - date.getTime();
+
+  if (window === "30d") {
+    return ageMs <= 30 * 86400000;
+  }
+
+  if (window === "90d") {
+    return ageMs <= 90 * 86400000;
+  }
+
+  return true;
+}
+
+function formatMoney(amount, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency
+  }).format(Number.isFinite(Number(amount)) ? Number(amount) : 0);
+}
+
+function isCurrencyBucket(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function formatMoneyDisplay(value, currency = "USD") {
+  if (isCurrencyBucket(value)) {
+    const entries = Object.entries(value)
+      .filter(([code, amount]) => code && Number.isFinite(Number(amount)))
+      .sort(([left], [right]) => String(left).localeCompare(String(right)));
+
+    if (entries.length === 0) {
+      return formatMoney(0, currency);
+    }
+
+    if (entries.length === 1) {
+      const [[singleCurrency, singleAmount]] = entries;
+      return formatMoney(singleAmount, singleCurrency);
+    }
+
+    return entries
+      .map(([code, amount]) => `${formatMoney(amount, code)} ${code}`)
+      .join(" / ");
+  }
+
+  return formatMoney(value, currency);
+}
+
+function getWorkspaceNotificationTone(notifications = [], unreadCount = 0) {
+  if (!unreadCount) {
+    return "neutral";
+  }
+
+  if (notifications.some((notification) => notification?.type === "task_overdue")) {
+    return "danger";
+  }
+
+  if (notifications.some((notification) => notification?.type === "task_due_soon")) {
+    return "warning";
+  }
+
+  return "info";
+}
+
+function workspaceNotificationIcon(type = "") {
+  switch (type) {
+    case "task_overdue":
+      return "⚠";
+    case "task_due_soon":
+      return "◔";
+    case "project_assigned":
+      return "▣";
+    case "task_assigned":
+    default:
+      return "☑";
+  }
+}
+
+function buildNotificationToneStyles(tone = "neutral", financeMode = false) {
+  if (tone === "danger") {
+    return financeMode
+      ? { background: "rgba(239,68,68,0.18)", color: "#fca5a5", borderColor: "rgba(239,68,68,0.28)" }
+      : { background: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca" };
+  }
+
+  if (tone === "warning") {
+    return financeMode
+      ? { background: "rgba(245,158,11,0.18)", color: "#fbbf24", borderColor: "rgba(245,158,11,0.28)" }
+      : { background: "#fef3c7", color: "#b45309", borderColor: "#fde68a" };
+  }
+
+  if (tone === "info") {
+    return financeMode
+      ? { background: "rgba(59,130,246,0.18)", color: "#93c5fd", borderColor: "rgba(59,130,246,0.28)" }
+      : { background: "#dbeafe", color: "#1d4ed8", borderColor: "#bfdbfe" };
+  }
+
+  return financeMode
+    ? { background: "rgba(255,255,255,0.08)", color: "#cbd5e1", borderColor: "rgba(255,255,255,0.08)" }
+    : { background: "#f8fafc", color: "#475569", borderColor: "#e2e8f0" };
+}
+
+function resolveFinanceAccountingState(summary = null, workspace = null, settings = null) {
+  const capabilities = settings?.summary?.capabilities || null;
+  return {
+    enabled: Boolean(
+      summary?.accountingEnabled ??
+        capabilities?.accountingEnabled ??
+        workspace?.accountingEnabled
+    ),
+    enabledAt:
+      summary?.accountingEnabledAt ||
+      capabilities?.accountingEnabledAt ||
+      workspace?.accountingEnabledAt ||
+      null
+  };
+}
+
+function formatAccountingPeriodLabel(period = "all") {
+  if (period === "30d") {
+    return "Last 30 days";
+  }
+
+  if (period === "90d") {
+    return "Last 90 days";
+  }
+
+  return "All time";
+}
+
+function formatAccountingReportVariantLabel(variant = "pack") {
+  if (variant === "profit_and_loss") {
+    return "P&L";
+  }
+
+  if (variant === "balance_snapshot") {
+    return "Balance";
+  }
+
+  return "Statement pack";
+}
+
+function formatPeriodKeyLabel(periodKey = "") {
+  if (!/^\d{4}-\d{2}$/.test(String(periodKey || ""))) {
+    return periodKey || "Unknown period";
+  }
+
+  const [yearString, monthString] = String(periodKey).split("-");
+  const year = Number(yearString);
+  const monthIndex = Number(monthString) - 1;
+  const date = new Date(Date.UTC(year, monthIndex, 1));
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function financeGuardrailMessage(error, fallback = "Please try again.") {
+  const details = error?.details || null;
+  const lockedPeriodLabel = details?.periodLock?.periodLabel || details?.lockedPeriodLabel || details?.lockedPeriodKey || "";
+  const attemptedAction = String(details?.attemptedAction || "").replace(/_/g, " ");
+
+  if (lockedPeriodLabel) {
+    return `${lockedPeriodLabel} is locked${attemptedAction ? `, so ${attemptedAction}` : ""} is blocked.`;
+  }
+
+  return error?.message || fallback;
+}
+
+function formatAccountingEntryStatusLabel(status = "unposted") {
+  if (status === "posted") {
+    return "Posted";
+  }
+
+  if (status === "voided") {
+    return "Voided";
+  }
+
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  if (status === "pending") {
+    return "Pending";
+  }
+
+  return "Unposted";
+}
+
+function formatFinanceControlStatusLabel(status = "clear") {
+  if (status === "blocked") {
+    return "Blocked";
+  }
+
+  if (status === "pending") {
+    return "Pending review";
+  }
+
+  if (status === "voided") {
+    return "Voided";
+  }
+
+  return "Clear";
+}
+
+function financeStatusBadgeStyle(tone = "neutral") {
+  if (tone === "good") {
+    return {
+      border: "1px solid rgba(16,185,129,0.22)",
+      background: "rgba(16,185,129,0.12)",
+      color: "#86efac"
+    };
+  }
+
+  if (tone === "danger") {
+    return {
+      border: "1px solid rgba(239,68,68,0.22)",
+      background: "rgba(239,68,68,0.12)",
+      color: "#fda4af"
+    };
+  }
+
+  if (tone === "warning") {
+    return {
+      border: "1px solid rgba(245,158,11,0.22)",
+      background: "rgba(245,158,11,0.12)",
+      color: "#fcd34d"
+    };
+  }
+
+  return {
+    border: "1px solid rgba(148,163,184,0.22)",
+    background: "rgba(148,163,184,0.10)",
+    color: "#cbd5e1"
+  };
+}
+
+function financeStatusToneFromState(status = "unposted") {
+  if (status === "posted" || status === "clear") {
+    return "good";
+  }
+
+  if (status === "blocked") {
+    return "danger";
+  }
+
+  if (status === "voided") {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function financeCloseReadinessTone(status = "attention") {
+  if (status === "ready") {
+    return "good";
+  }
+
+  if (status === "blocked") {
+    return "danger";
+  }
+
+  return "warning";
+}
+
+function formatFinanceCloseReadinessLabel(status = "attention") {
+  if (status === "ready") {
+    return "Ready to lock";
+  }
+
+  if (status === "blocked") {
+    return "Blocked items";
+  }
+
+  return "Needs review";
+}
+
+function sanitizeDownloadPart(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "workspace";
+}
+
+function downloadJsonFile(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+function escapeCsvValue(value) {
+  const normalized = value === null || value === undefined ? "" : String(value);
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  return normalized;
+}
+
+function relativeTime(isoString) {
+  const value = new Date(isoString).getTime();
+  const diffMinutes = Math.max(Math.round((Date.now() - value) / 60000), 0);
+
+  if (diffMinutes < 1) {
+    return "just now";
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes}m`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours}h`;
+  }
+
+  return formatDate(isoString);
+}
+
+function moveThreadToTop(list, threadId) {
+  const thread = list.find((entry) => entry.id === threadId);
+  if (!thread) {
+    return list;
+  }
+
+  return [thread, ...list.filter((entry) => entry.id !== threadId)];
+}
+
+function sortThreads(list) {
+  return [...list].sort((first, second) => {
+    const firstTime = new Date(first.updatedAt).getTime();
+    const secondTime = new Date(second.updatedAt).getTime();
+    return secondTime - firstTime;
+  });
+}
+
+function canSeeBot(botType, role) {
+  return (ROLE_BOT_VISIBILITY[role] || []).includes(botType);
+}
+
+function canAccessWorkspaceScope(scope, requestedScope) {
+  if (requestedScope === "both") {
+    return true;
+  }
+
+  return scope === requestedScope;
+}
+
+function normalizeWorkspaceRoles(userLike, fallbackRole = "manager") {
+  const explicitRoles = Array.isArray(userLike?.workspaceRoles)
+    ? userLike.workspaceRoles.filter((role) => FINANCE_WORKSPACE_ROLES.includes(role))
+    : [];
+
+  if (explicitRoles.length) {
+    return [...new Set(explicitRoles)];
+  }
+
+  const legacyRole = userLike?.workspaceRole || userLike?.role || fallbackRole;
+  if (legacyRole === "finance" || legacyRole === "finance_staff") {
+    return ["finance_staff"];
+  }
+
+  if (legacyRole === "owner" || legacyRole === "manager") {
+    return ["approver", "finance_staff"];
+  }
+
+  if (legacyRole === "viewer" || legacyRole === "staff") {
+    return ["viewer"];
+  }
+
+  return [];
+}
+
+function buildFinancePermissions(workspaceRoles = [], workspaceScope = "both") {
+  const hasFinanceScope = canAccessWorkspaceScope("finance", workspaceScope);
+  const normalizedRoles = [...new Set(workspaceRoles)].filter((role) => FINANCE_WORKSPACE_ROLES.includes(role));
+  const canView = hasFinanceScope && normalizedRoles.length > 0;
+  const canApprove = canView && normalizedRoles.includes("approver");
+  const canOperate = canView && normalizedRoles.includes("finance_staff");
+  const isAccountant = canView && normalizedRoles.includes("accountant");
+
+  return {
+    roles: normalizedRoles,
+    canView,
+    canApprove,
+    canCreate: canOperate,
+    canEdit: canOperate,
+    canMarkPaid: canOperate,
+    canReconcile: canOperate,
+    isAccountant
+  };
+}
+
+function canSeeNavItem(itemId, workspaceScope) {
+  if (itemId === "finances") {
+    return canAccessWorkspaceScope("finance", workspaceScope);
+  }
+
+  if (itemId === "warehouse") {
+    return canAccessWorkspaceScope("warehouse", workspaceScope);
+  }
+
+  return true;
+}
+
+function canSeeThread(thread, role, workspaceScope = "both", workspaceMode = "demo") {
+  if (workspaceMode === "real" && !thread.isBot) {
+    return Boolean(thread.isWorkspaceConversation);
+  }
+
+  if (!thread.isBot) {
+    return true;
+  }
+
+  return canSeeBot(thread.botType, role) && canAccessWorkspaceScope(thread.botType, workspaceScope);
+}
+
+function visibleCommandItems(role, draft, workspaceScope = "both", financePermissions = null) {
+  const query = draft.trim().toLowerCase().split(/\s+/)[0];
+  return COMMAND_ITEMS.filter((item) => {
+    if (!item.roles.includes(role)) {
+      return false;
+    }
+    if (!canAccessWorkspaceScope(item.scope, workspaceScope)) {
+      return false;
+    }
+    if (!query || query === "/") {
+      if (item.scope !== "finance" || !financePermissions) {
+        return true;
+      }
+
+      if (item.command.startsWith("/report")) {
+        return financePermissions.canView;
+      }
+
+      return financePermissions.canCreate;
+    }
+
+    if (!item.command.split(" ")[0].toLowerCase().startsWith(query)) {
+      return false;
+    }
+
+    if (item.scope !== "finance" || !financePermissions) {
+      return true;
+    }
+
+    if (item.command.startsWith("/report")) {
+      return financePermissions.canView;
+    }
+
+    return financePermissions.canCreate;
+  });
+}
+
+function isCoarsePointer() {
+  return typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+}
+
+function messagePreview(message) {
+  if (!message) {
+    return "No messages yet";
+  }
+
+  if (message.type === "invoice") {
+    const status = String(message.metadata.recordStatus || message.metadata.status || "pending").replaceAll("_", " ");
+    return `Invoice #${message.metadata.invoiceNumber} is ${status}`;
+  }
+  if (message.type === "stock_alert") {
+    return `${message.metadata.productName} is below stock minimum`;
+  }
+  if (message.type === "shipment") {
+    return `Shipment ${message.metadata.orderNumber} is ${message.metadata.statusLabel}`;
+  }
+  if (message.type === "expense") {
+    return `Expense logged: ${formatMoney(message.metadata.amount, message.metadata.currency)}`;
+  }
+  if (message.type === "report") {
+    return "Business report generated";
+  }
+
+  return message.content;
+}
+
+function avatarForThread(thread) {
+  if (thread.id === "financebot") {
+    return { label: "💰", bg: "bg-slate-900", fg: "text-amber-300" };
+  }
+  if (thread.id === "warebot") {
+    return { label: "📦", bg: "bg-slate-900", fg: "text-orange-300" };
+  }
+
+  return {
+    label: thread.name.charAt(0).toUpperCase(),
+    bg: "bg-[#2D8EFF]",
+    fg: "text-white"
+  };
+}
+
+function metricTone(id) {
+  if (id.includes("paid") || id.includes("revenue")) return "from-emerald-50 to-emerald-100 text-emerald-700";
+  if (id.includes("pending") || id.includes("outstanding")) return "from-orange-50 to-orange-100 text-orange-700";
+  if (id.includes("overdue") || id.includes("low-stock")) return "from-rose-50 to-rose-100 text-rose-700";
+  if (id.includes("due-today") || id.includes("reconcile")) return "from-amber-50 to-amber-100 text-amber-700";
+  if (id.includes("unassigned") || id.includes("attention")) return "from-slate-100 to-slate-200 text-slate-700";
+  return "from-blue-50 to-blue-100 text-blue-700";
+}
+
+function metricDescription(metric) {
+  switch (metric.id) {
+    case "ops-attention":
+      return "Combined finance, warehouse, and execution items that need coordination inside this workspace.";
+    case "execution-overdue":
+      return "Workspace tasks that are already past due and need follow-up.";
+    case "execution-projects":
+      return "Active projects that are drifting close to due dates or showing low completion progress.";
+    case "finance-outstanding":
+      return "Invoices still carrying an unpaid balance across this workspace.";
+    case "finance-paid":
+      return "Invoices that have been fully settled and recorded as paid.";
+    case "finance-overdue":
+      return "Invoices whose due date has passed without payment.";
+    case "finance-expenses":
+      return "Expense volume logged in this workspace, with recurring invoice context.";
+    case "finance-gross-profit":
+      return "Approximate gross profit for the current reporting period using the workspace base currency.";
+    case "finance-cash-flow":
+      return "Approximate net cash flow for the current reporting period using the workspace base currency.";
+    case "finance-cash-position":
+      return "Cash across connected manual bank accounts, grouped by currency and normalized for overview.";
+    case "warehouse-skus":
+      return "Tracked products currently in the warehouse catalog.";
+    case "warehouse-low-stock":
+      return "Products currently below their minimum stock threshold.";
+    case "warehouse-inventory-value":
+      return "Estimated inventory value across tracked warehouse products.";
+    case "warehouse-in-transit":
+      return "Orders that have left the warehouse but are not delivered yet.";
+    case "warehouse-delivered":
+      return "Orders marked delivered today.";
+    default:
+      return "Live business metric generated from the current thread data.";
+  }
+}
+
+function isFinanceMode(activeThread, activeNav) {
+  if (activeNav === "home" || activeNav === "users") {
+    return false;
+  }
+  return activeThread?.id === "financebot" || activeNav === "finances";
+}
+
+function isWorkspaceBotMode(activeThread, activeNav) {
+  return (
+    activeThread?.id === "financebot" ||
+    activeThread?.id === "warebot" ||
+    activeNav === "finances" ||
+    activeNav === "warehouse"
+  );
+}
+
+function roleBadgeStyle(role) {
+  if (role === "warehouse") {
+    return {
+      bg: "rgba(245,158,11,0.16)",
+      border: "1px solid rgba(245,158,11,0.26)",
+      color: "#f59e0b"
+    };
+  }
+
+  if (role === "finance") {
+    return {
+      bg: "rgba(59,130,246,0.16)",
+      border: "1px solid rgba(59,130,246,0.26)",
+      color: "#60a5fa"
+    };
+  }
+
+  return {
+    bg: "rgba(16,185,129,0.16)",
+    border: "1px solid rgba(16,185,129,0.26)",
+    color: "#10b981"
+  };
+}
+
+function financeMetricMeta(metric) {
+  switch (metric.id) {
+    case "finance-paid":
+      return {
+        icon: "💰",
+        label: "PAID",
+        accent: "#10b981",
+        subColor: "#10b981"
+      };
+    case "finance-outstanding":
+      return {
+        icon: "📄",
+        label: "OUTSTANDING",
+        accent: "#f59e0b",
+        subColor: "#f59e0b"
+      };
+    case "finance-overdue":
+      return {
+        icon: "●",
+        label: "OVERDUE",
+        accent: "#ef4444",
+        subColor: "#ef4444"
+      };
+    case "finance-expenses":
+      return {
+        icon: "📊",
+        label: "EXPENSES",
+        accent: "#60a5fa",
+        subColor: "#94a3b8"
+      };
+    case "finance-gross-profit":
+      return {
+        icon: "↗",
+        label: "GROSS PROFIT",
+        accent: "#34d399",
+        subColor: "#34d399"
+      };
+    case "finance-cash-flow":
+      return {
+        icon: "≈",
+        label: "CASH FLOW",
+        accent: "#f59e0b",
+        subColor: "#f59e0b"
+      };
+    case "finance-cash-position":
+      return {
+        icon: "🏦",
+        label: "CASH",
+        accent: "#38bdf8",
+        subColor: "#38bdf8"
+      };
+    case "warehouse-inventory-value":
+      return {
+        icon: "▣",
+        label: "INVENTORY VALUE",
+        accent: "#a78bfa",
+        subColor: "#a78bfa"
+      };
+    default:
+      return {
+        icon: "•",
+        label: metric.label.toUpperCase(),
+        accent: "#10b981",
+        subColor: "#94a3b8"
+      };
+  }
+}
+
+function displayTabLabel(tab, financeMode) {
+  if (!financeMode) {
+    return tab;
+  }
+
+  if (tab === "Media") return "Analytics";
+  if (tab === "Links") return "Approvals";
+  return tab;
+}
+
+function financeThreadDescriptor(thread) {
+  if (thread?.id === "financebot") {
+    return { label: "Finance Cockpit", accent: "#10b981", ring: "rgba(16,185,129,0.28)", bg: "rgba(16,185,129,0.12)" };
+  }
+  if (thread?.id === "warebot") {
+    return { label: "Warehouse Ops", accent: "#f59e0b", ring: "rgba(245,158,11,0.28)", bg: "rgba(245,158,11,0.1)" };
+  }
+  return { label: thread?.online ? "Live conversation" : "Team thread", accent: "#64748b", ring: "rgba(148,163,184,0.14)", bg: "rgba(148,163,184,0.14)" };
+}
+
+// ----- workspace/finance/finance-record-mappers.js -----
+function normalizeFinanceInvoiceStatus(status = "") {
+  if (status === "pending_review" || status === "new") {
+    return "pending";
+  }
+
+  return status;
+}
+
+function normalizeFinanceExpenseStatus(status = "") {
+  if (status === "submitted") {
+    return "pending_review";
+  }
+
+  return status;
+}
+
+function formatFinanceExpenseStatusLabel(status = "") {
+  return String(status || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function isFinanceRecurringDue(recurring) {
+  if (!recurring?.enabled || !recurring?.nextIssueDate) {
+    return false;
+  }
+
+  const nextIssueDate = new Date(recurring.nextIssueDate);
+  if (Number.isNaN(nextIssueDate.getTime())) {
+    return false;
+  }
+
+  return nextIssueDate.getTime() <= Date.now();
+}
+
+function mapFinanceInvoiceRecord(invoice) {
+  return {
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    companyName: invoice.customer?.name || invoice.customerName || invoice.vendorName,
+    customer: invoice.customer || null,
+    amount: invoice.amount,
+    subtotal: invoice.subtotal ?? invoice.amount,
+    currency: invoice.currency,
+    dueDate: invoice.dueDate,
+    status: normalizeFinanceInvoiceStatus(invoice.status),
+    recordStatus: invoice.status,
+    paidAmount: invoice.paidAmount || 0,
+    taxRate: Number(invoice.taxRate || 0),
+    taxAmount: Number(invoice.taxAmount || 0),
+    taxLabel: invoice.taxLabel || "Tax",
+    totalWithTax: invoice.totalWithTax ?? invoice.amount,
+    paidAt: invoice.paidAt || null,
+    payments: Array.isArray(invoice.payments) ? invoice.payments : [],
+    outstandingAmount: invoice.outstandingAmount ?? Math.max(0, Number(invoice.amount || 0) - Number(invoice.paidAmount || 0)),
+    recurring: invoice.recurring || {
+      enabled: false,
+      frequency: "monthly",
+      interval: 1,
+      nextIssueDate: null
+    },
+    recurringDue: Boolean(invoice.recurringDue || isFinanceRecurringDue(invoice.recurring)),
+    recurringSourceInvoiceId: invoice.recurringSourceInvoiceId || null,
+    recurringSequence: Number(invoice.recurringSequence || 0),
+    note: invoice.note || "",
+    rejectionReason: invoice.rejectionReason || "",
+    attachments: invoice.attachments || [],
+    accounting: invoice.accounting || null,
+    approvedByName: invoice.approvedBy?.name || "",
+    rejectedByName: invoice.rejectedBy?.name || "",
+    paidByName: invoice.paidBy?.name || "",
+    reconciledByName: invoice.reconciledBy?.name || "",
+    createdAt: invoice.createdAt,
+    updatedAt: invoice.updatedAt
+  };
+}
+
+function mapFinanceExpenseRecord(expense) {
+  return {
+    id: expense.id,
+    amount: expense.amount,
+    subtotal: expense.totalWithTax != null
+      ? Number(expense.totalWithTax || 0) - Number(expense.taxAmount || 0)
+      : expense.amount,
+    currency: expense.currency,
+    category: expense.category,
+    vendorName: expense.vendorName || "",
+    vendor: expense.vendor || null,
+    note: expense.note || "",
+    receipt: expense.receipt || null,
+    status: normalizeFinanceExpenseStatus(expense.status),
+    recordStatus: expense.status,
+    logged: expense.status !== "draft",
+    accounting: expense.accounting || null,
+    approvedByName: expense.approvedBy?.name || "",
+    approvedAt: expense.approvedAt || null,
+    taxRate: Number(expense.taxRate || 0),
+    taxAmount: Number(expense.taxAmount || 0),
+    taxLabel: expense.taxLabel || "Tax",
+    totalWithTax: expense.totalWithTax ?? expense.amount,
+    rejectedByName: expense.rejectedBy?.name || "",
+    rejectedAt: expense.rejectedAt || null,
+    rejectionReason: expense.rejectionReason || "",
+    reimbursedByName: expense.reimbursedBy?.name || "",
+    reimbursedAt: expense.reimbursedAt || null,
+    reimbursement: expense.reimbursement || { method: "", reference: "", note: "" },
+    reconciledByName: expense.reconciledBy?.name || "",
+    createdAt: expense.createdAt,
+    updatedAt: expense.updatedAt,
+    expenseDate: expense.expenseDate
+  };
+}
+
+function buildFinanceMessagesFromRecords({ invoices, expenses }) {
+  const invoiceMessages = invoices.map((invoice) => ({
+    id: `finance-invoice-${invoice.id}`,
+    senderId: "financebot",
+    senderName: "FinanceBot",
+    createdAt: invoice.updatedAt || invoice.createdAt,
+    type: "invoice",
+    content: `Invoice #${invoice.invoiceNumber} is ${normalizeFinanceInvoiceStatus(invoice.status)}.`,
+    metadata: {
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      companyName: invoice.customer?.name || invoice.customerName || invoice.vendorName,
+      customer: invoice.customer || null,
+      amount: invoice.amount,
+      subtotal: invoice.subtotal ?? invoice.amount,
+      currency: invoice.currency,
+      dueDate: invoice.dueDate,
+      status: normalizeFinanceInvoiceStatus(invoice.status),
+      recordStatus: invoice.status,
+      paidAmount: invoice.paidAmount || 0,
+      taxRate: Number(invoice.taxRate || 0),
+      taxAmount: Number(invoice.taxAmount || 0),
+      taxLabel: invoice.taxLabel || "Tax",
+      totalWithTax: invoice.totalWithTax ?? invoice.amount,
+      payments: Array.isArray(invoice.payments) ? invoice.payments : [],
+      outstandingAmount: invoice.outstandingAmount ?? Math.max(0, Number(invoice.amount || 0) - Number(invoice.paidAmount || 0)),
+      recurring: invoice.recurring || {
+        enabled: false,
+        frequency: "monthly",
+        interval: 1,
+        nextIssueDate: null
+      },
+      recurringDue: Boolean(invoice.recurringDue || isFinanceRecurringDue(invoice.recurring)),
+      recurringSourceInvoiceId: invoice.recurringSourceInvoiceId || null,
+      recurringSequence: Number(invoice.recurringSequence || 0),
+      note: invoice.note || "",
+      rejectionReason: invoice.rejectionReason || "",
+      attachments: invoice.attachments || [],
+      accounting: invoice.accounting || null,
+      approvedByName: invoice.approvedBy?.name || "",
+      rejectedByName: invoice.rejectedBy?.name || "",
+      paidByName: invoice.paidBy?.name || "",
+      reconciledByName: invoice.reconciledBy?.name || ""
+    }
+  }));
+
+  const expenseMessages = expenses.map((expense) => ({
+    id: `finance-expense-${expense.id}`,
+    senderId: "financebot",
+    senderName: "FinanceBot",
+    createdAt: expense.updatedAt || expense.createdAt,
+    type: "expense",
+    content: `Expense ${formatMoney(expense.amount, expense.currency)} logged under ${expense.category}.`,
+    metadata: {
+      expenseId: expense.id,
+      amount: expense.amount,
+      subtotal: expense.subtotal ?? (expense.totalWithTax != null
+        ? Number(expense.totalWithTax || 0) - Number(expense.taxAmount || 0)
+        : expense.amount),
+      currency: expense.currency,
+      category: expense.category,
+      vendorName: expense.vendorName || "",
+      vendor: expense.vendor || null,
+      note: expense.note || "",
+      receipt: expense.receipt || null,
+      status: normalizeFinanceExpenseStatus(expense.status),
+      recordStatus: expense.status,
+      logged: normalizeFinanceExpenseStatus(expense.status) !== "draft",
+      accounting: expense.accounting || null,
+      approvedByName: expense.approvedBy?.name || "",
+      approvedAt: expense.approvedAt || null,
+      taxRate: Number(expense.taxRate || 0),
+      taxAmount: Number(expense.taxAmount || 0),
+      taxLabel: expense.taxLabel || "Tax",
+      totalWithTax: expense.totalWithTax ?? expense.amount,
+      rejectedByName: expense.rejectedBy?.name || "",
+      rejectedAt: expense.rejectedAt || null,
+      rejectionReason: expense.rejectionReason || "",
+      reimbursedByName: expense.reimbursedBy?.name || "",
+      reimbursedAt: expense.reimbursedAt || null,
+      reimbursement: expense.reimbursement || { method: "", reference: "", note: "" },
+      reconciledByName: expense.reconciledBy?.name || ""
+    }
+  }));
+
+  return [...invoiceMessages, ...expenseMessages].sort(
+    (first, second) => new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime()
+  );
+}
+
+function applyRealFinanceRecords(current, financePayload) {
+  const mappedInvoices = financePayload.invoices.map(mapFinanceInvoiceRecord);
+  const mappedExpenses = financePayload.expenses.map(mapFinanceExpenseRecord);
+  const financeMessages = buildFinanceMessagesFromRecords(financePayload);
+  const lastFinanceMessage = financeMessages[financeMessages.length - 1] || null;
+
+  return {
+    ...current,
+    invoices: mappedInvoices,
+    expenses: mappedExpenses,
+    threads: sortThreads(
+      current.threads.map((thread) =>
+        thread.id === "financebot"
+          ? {
+              ...thread,
+              messages: financeMessages,
+              unread: 0,
+              updatedAt: lastFinanceMessage?.createdAt || thread.updatedAt,
+              preview: lastFinanceMessage ? messagePreview(lastFinanceMessage) : "No finance records yet"
+            }
+          : thread
+      )
+    )
+  };
+}
+
+function buildFinancePayloadFromState(current, { replaceInvoice = null, replaceExpense = null } = {}) {
+  return {
+    invoices: current.invoices
+      .filter((entry) => !replaceInvoice || entry.id !== replaceInvoice.id)
+      .map((entry) => ({
+        id: entry.id,
+        invoiceNumber: entry.invoiceNumber,
+        vendorName: entry.companyName,
+        customerName: entry.companyName,
+        customerEmail: entry.customer?.email || "",
+        customer: entry.customer || null,
+        amount: entry.amount,
+        currency: entry.currency,
+        dueDate: entry.dueDate,
+        status: entry.recordStatus || entry.status,
+        paidAmount: entry.paidAmount || 0,
+        paidAt: entry.paidAt || null,
+        payments: entry.payments || [],
+        outstandingAmount: entry.outstandingAmount ?? Math.max(0, Number(entry.amount || 0) - Number(entry.paidAmount || 0)),
+        note: entry.note || "",
+        rejectionReason: entry.rejectionReason || "",
+        attachments: entry.attachments || [],
+        recurring: entry.recurring || {
+          enabled: false,
+          frequency: "monthly",
+          interval: 1,
+          nextIssueDate: null
+        },
+        recurringDue: Boolean(entry.recurringDue || isFinanceRecurringDue(entry.recurring)),
+        recurringSourceInvoiceId: entry.recurringSourceInvoiceId || null,
+        recurringSequence: Number(entry.recurringSequence || 0),
+        updatedAt: entry.updatedAt,
+        createdAt: entry.createdAt,
+        approvedBy: entry.approvedByName ? { name: entry.approvedByName } : null,
+        rejectedBy: entry.rejectedByName ? { name: entry.rejectedByName } : null,
+        paidBy: entry.paidByName ? { name: entry.paidByName } : null,
+        reconciledBy: entry.reconciledByName ? { name: entry.reconciledByName } : null
+      }))
+      .concat(replaceInvoice || []),
+    expenses: current.expenses
+      .filter((entry) => !replaceExpense || entry.id !== replaceExpense.id)
+      .map((entry) => ({
+        id: entry.id,
+        amount: entry.amount,
+        currency: entry.currency,
+        category: entry.category,
+        vendorName: entry.vendorName || "",
+        vendorEmail: entry.vendor?.email || "",
+        vendor: entry.vendor || null,
+        note: entry.note || "",
+        receipt: entry.receipt || null,
+        status: entry.recordStatus || entry.status,
+        updatedAt: entry.updatedAt,
+        createdAt: entry.createdAt,
+        expenseDate: entry.expenseDate,
+        approvedBy: entry.approvedByName ? { name: entry.approvedByName } : null,
+        approvedAt: entry.approvedAt || null,
+        rejectedBy: entry.rejectedByName ? { name: entry.rejectedByName } : null,
+        rejectedAt: entry.rejectedAt || null,
+        rejectionReason: entry.rejectionReason || "",
+        reimbursedBy: entry.reimbursedByName ? { name: entry.reimbursedByName } : null,
+        reimbursedAt: entry.reimbursedAt || null,
+        reimbursement: entry.reimbursement || { method: "", reference: "", note: "" },
+        reconciledBy: entry.reconciledByName ? { name: entry.reconciledByName } : null
+      }))
+      .concat(replaceExpense || [])
+  };
+}
+
+// ----- workspace/warehouse/warehouse-record-mappers.js -----
+function normalizeWarehouseAlertStatus(status = "") {
+  if (status === "resolved" || status === "dismissed") {
+    return status;
+  }
+
+  return "active";
+}
+
+function normalizeWarehouseOrderStatus(status = "") {
+  const normalized = String(status || "").toLowerCase();
+  if (["pending", "packed", "dispatched", "in_transit", "delayed", "delivered", "cancelled"].includes(normalized)) {
+    return normalized;
+  }
+
+  return "dispatched";
+}
+
+function warehouseProductStatusLabel(status = "") {
+  switch (String(status || "").toLowerCase()) {
+    case "paused":
+      return "Paused";
+    case "discontinued":
+      return "Discontinued";
+    default:
+      return "Active";
+  }
+}
+
+function warehouseStockSignalLabel(signal = "") {
+  switch (String(signal || "").toLowerCase()) {
+    case "low_stock":
+      return "Low stock";
+    case "restock_incoming":
+      return "Restock incoming";
+    case "discontinued":
+      return "Discontinued";
+    default:
+      return "Healthy";
+  }
+}
+
+function warehouseShipmentTypeLabel(type = "") {
+  return String(type || "").toLowerCase() === "incoming" ? "Incoming" : "Outgoing";
+}
+
+function warehouseMovementTypeLabel(type = "") {
+  switch (String(type || "").toLowerCase()) {
+    case "initial":
+      return "Initial stock";
+    case "received":
+      return "Received stock";
+    case "fulfilled":
+      return "Stock reduced";
+    default:
+      return "Stock adjusted";
+  }
+}
+
+function formatWarehouseQuantity(value = 0) {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: 2
+  }).format(Number(value || 0));
+}
+
+function formatWarehouseQuantityDelta(value = 0, unit = "units") {
+  const amount = Number(value || 0);
+  return `${amount > 0 ? "+" : ""}${formatWarehouseQuantity(amount)} ${unit || "units"}`;
+}
+
+function getWarehouseReorderThreshold(product) {
+  const explicitThreshold = Number(product?.reorderThreshold ?? 0);
+  if (Number.isFinite(explicitThreshold) && explicitThreshold > 0) {
+    return explicitThreshold;
+  }
+
+  const minimumStock = Number(product?.minimumStock ?? 0);
+  return Number.isFinite(minimumStock) ? minimumStock : 0;
+}
+
+function isWarehouseLowStock(product) {
+  const threshold = getWarehouseReorderThreshold(product);
+  return threshold > 0 && Number(product?.currentStock || 0) <= threshold;
+}
+
+function formatPurchaseOrderStatusLabel(status = "") {
+  return String(status || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function mapWarehouseProductRecord(product) {
+  const reorderThreshold = getWarehouseReorderThreshold(product);
+  return {
+    id: product.id,
+    name: product.name,
+    sku: product.sku,
+    itemType: product.itemType || "inventory",
+    unit: product.unit || "units",
+    unitCost: Number(product.unitCost || 0),
+    currency: product.currency || "USD",
+    currentStock: product.currentStock,
+    minimumStock: product.minimumStock,
+    reorderThreshold,
+    reorderQuantity: product.reorderQuantity,
+    alertStatus: normalizeWarehouseAlertStatus(product.alertStatus),
+    productStatus: product.productStatus || "active",
+    lastReorderQuantity: product.lastReorderQuantity || null,
+    stockGap: Number(product.stockGap || Math.max(0, reorderThreshold - Number(product.currentStock || 0))),
+    stockSignal: product.stockSignal || (isWarehouseLowStock(product) ? "low_stock" : "healthy"),
+    updatedAt: product.updatedAt,
+    createdAt: product.createdAt
+  };
+}
+
+function mapWarehouseOrderRecord(order) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    destination: order.destination,
+    shipmentType: order.shipmentType || "outgoing",
+    itemsCount: Number(order.itemsCount || 1),
+    status: normalizeWarehouseOrderStatus(order.status),
+    currentStep: typeof order.currentStep === "number" ? order.currentStep : 1,
+    lastStatusUpdate: order.lastStatusUpdate || null,
+    statusHistory: Array.isArray(order.statusHistory) ? order.statusHistory : [],
+    estimatedDelivery: order.estimatedDelivery,
+    updatedAt: order.updatedAt,
+    createdAt: order.createdAt
+  };
+}
+
+function serializeWarehouseProductStateEntry(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    sku: product.sku,
+    itemType: product.itemType || "inventory",
+    unit: product.unit || "units",
+    unitCost: Number(product.unitCost || 0),
+    currency: product.currency || "USD",
+    currentStock: product.currentStock,
+    minimumStock: product.minimumStock,
+    reorderThreshold: getWarehouseReorderThreshold(product),
+    reorderQuantity: product.reorderQuantity,
+    alertStatus: product.alertStatus,
+    productStatus: product.productStatus || "active",
+    lastReorderQuantity: product.lastReorderQuantity || null,
+    stockGap: product.stockGap || 0,
+    stockSignal: product.stockSignal || "healthy",
+    updatedAt: product.updatedAt,
+    createdAt: product.createdAt
+  };
+}
+
+function mapWarehouseAlertRecord(alert) {
+  return {
+    id: alert.itemId || alert.productId,
+    itemId: alert.itemId || alert.productId,
+    productId: alert.productId || alert.itemId,
+    itemName: alert.itemName || alert.name || "",
+    name: alert.itemName || alert.name || "",
+    sku: alert.sku || "",
+    currentStock: Number(alert.currentStock || 0),
+    reorderThreshold: Number(alert.reorderThreshold || 0),
+    reorderQuantity: Number(alert.reorderQuantity || 0),
+    warehouseLocation: alert.warehouseLocation || "",
+    unit: alert.unit || "units",
+    unitCost: Number(alert.unitCost || 0),
+    currency: alert.currency || "USD"
+  };
+}
+
+function mapPurchaseOrderRecord(order) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    vendorId: order.vendorId || null,
+    vendorName: order.vendorName || "",
+    status: order.status || "draft",
+    lineItems: Array.isArray(order.lineItems)
+      ? order.lineItems.map((lineItem) => ({
+          id: lineItem.id,
+          itemId: lineItem.itemId || null,
+          itemName: lineItem.itemName || "",
+          sku: lineItem.sku || "",
+          quantity: Number(lineItem.quantity || 0),
+          unitCost: Number(lineItem.unitCost || 0),
+          taxRate: Number(lineItem.taxRate || 0),
+          taxAmount: Number(lineItem.taxAmount || 0),
+          currency: lineItem.currency || order.currency || "USD",
+          receivedQuantity: Number(lineItem.receivedQuantity || 0),
+          lineTotal: Number(lineItem.lineTotal || (Number(lineItem.quantity || 0) * Number(lineItem.unitCost || 0))),
+          lineTotalWithTax: Number(lineItem.lineTotalWithTax || lineItem.lineTotal || (Number(lineItem.quantity || 0) * Number(lineItem.unitCost || 0)))
+        }))
+      : [],
+    totalAmount: Number(order.totalAmount || 0),
+    currency: order.currency || "USD",
+    totalsByCurrency: order.totalsByCurrency || {},
+    mixedCurrency: Boolean(order.mixedCurrency),
+    expectedDeliveryDate: order.expectedDeliveryDate || null,
+    notes: order.notes || "",
+    sentAt: order.sentAt || null,
+    receivedAt: order.receivedAt || null,
+    financeExpenseId: order.financeExpenseId || null,
+    financeExpense: order.financeExpense || null,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt
+  };
+}
+
+function serializeWarehouseOrderStateEntry(order) {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    destination: order.destination,
+    shipmentType: order.shipmentType || "outgoing",
+    itemsCount: Number(order.itemsCount || 1),
+    status: order.status,
+    currentStep: order.currentStep,
+    lastStatusUpdate: order.lastStatusUpdate || null,
+    statusHistory: Array.isArray(order.statusHistory) ? order.statusHistory : [],
+    estimatedDelivery: order.estimatedDelivery,
+    updatedAt: order.updatedAt,
+    createdAt: order.createdAt
+  };
+}
+
+function warehouseStatusLabel(status = "") {
+  switch (normalizeWarehouseOrderStatus(status)) {
+    case "pending":
+      return "Pending";
+    case "packed":
+      return "Packed";
+    case "dispatched":
+      return "Dispatched";
+    case "in_transit":
+      return "In Transit";
+    case "delayed":
+      return "Delayed";
+    case "delivered":
+      return "Delivered";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Dispatched";
+  }
+}
+
+function shipmentStepIsActive(status = "", currentStep = 0, index = 0) {
+  const normalized = normalizeWarehouseOrderStatus(status);
+  if (normalized === "pending") {
+    return false;
+  }
+
+  return index <= Number(currentStep || 0);
+}
+
+function buildWarehouseMessagesFromRecords(warehousePayload) {
+  const productMessages = warehousePayload.products.map((product) => ({
+    id: `warehouse-product-${product.id}`,
+    senderId: "warebot",
+    senderName: "WareBot",
+    createdAt: product.updatedAt || product.createdAt,
+    type: "stock_alert",
+    content:
+      product.stockSignal === "low_stock"
+        ? `${product.name} is below the warehouse threshold.`
+        : product.stockSignal === "restock_incoming"
+          ? `${product.name} has a restock queued for the warehouse.`
+          : `${product.name} stock is being monitored in the warehouse queue.`,
+    metadata: {
+      alertId: `warehouse-alert-${product.id}`,
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      itemType: product.itemType,
+      unit: product.unit,
+      currentStock: product.currentStock,
+      minimumStock: product.minimumStock,
+      reorderThreshold: getWarehouseReorderThreshold(product),
+      status: normalizeWarehouseAlertStatus(product.alertStatus),
+      productStatus: product.productStatus || "active",
+      stockSignal: product.stockSignal || "healthy",
+      stockGap: Number(product.stockGap || 0),
+      reorderQuantity: product.reorderQuantity,
+      reorderAmount: product.lastReorderQuantity || product.reorderQuantity
+    }
+  }));
+
+  const orderMessages = warehousePayload.orders.map((order) => ({
+    id: `warehouse-order-${order.id}`,
+    senderId: "warebot",
+    senderName: "WareBot",
+    createdAt: order.updatedAt || order.createdAt,
+    type: "shipment",
+    content: `Shipment ${order.orderNumber} is ${warehouseStatusLabel(order.status)}.`,
+    metadata: {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      destination: order.destination,
+      shipmentType: order.shipmentType || "outgoing",
+      itemsCount: Number(order.itemsCount || 1),
+      steps: SHIPMENT_STEPS,
+      currentStep: typeof order.currentStep === "number" ? order.currentStep : 1,
+      statusLabel: warehouseStatusLabel(order.status),
+      estimatedDelivery: order.estimatedDelivery,
+      status: normalizeWarehouseOrderStatus(order.status),
+      lastStatusUpdate: order.lastStatusUpdate || null,
+      statusHistory: Array.isArray(order.statusHistory) ? order.statusHistory : []
+    }
+  }));
+
+  return [...productMessages, ...orderMessages].sort(
+    (first, second) => new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime()
+  );
+}
+
+function applyRealWarehouseRecords(current, warehousePayload) {
+  const mappedProducts = warehousePayload.products.map(mapWarehouseProductRecord);
+  const mappedOrders = warehousePayload.orders.map(mapWarehouseOrderRecord);
+  const warehouseMessages = buildWarehouseMessagesFromRecords(warehousePayload);
+  const lastWarehouseMessage = warehouseMessages[warehouseMessages.length - 1] || null;
+
+  return {
+    ...current,
+    products: mappedProducts,
+    orders: mappedOrders,
+    threads: sortThreads(
+      current.threads.map((thread) =>
+        thread.id === "warebot"
+          ? {
+              ...thread,
+              messages: warehouseMessages,
+              unread: 0,
+              updatedAt: lastWarehouseMessage?.createdAt || thread.updatedAt,
+              preview: lastWarehouseMessage ? messagePreview(lastWarehouseMessage) : "No warehouse records yet"
+            }
+          : thread
+      )
+    )
+  };
+}
+
+// ----- workspace/layout/Sidebar.jsx -----
+function Sidebar({ activeNav, onNavChange, currentUser, settings, onToggleSound, financeMode, workspaceScope }) {
+  const { totalUnread } = useUnread();
+  const badgeStyle = roleBadgeStyle(currentUser.role);
+  const sidebarStyle = financeMode
+    ? {
+        width: "clamp(184px, 18vw, 220px)",
+        minWidth: 184,
+        maxWidth: 220,
+        boxShadow: "inset -1px 0 0 rgba(255,255,255,0.04)"
+      }
+    : {
+        width: "clamp(184px, 18vw, 220px)",
+        minWidth: 184,
+        maxWidth: 220
+      };
+
+  return (
+    <aside
+      className={`flex h-full flex-col px-4 py-4 ${financeMode ? "border-r border-white/5 bg-[#080d16] text-white" : "border-r border-slate-200 bg-[#F5F6FA]"}`}
+      style={sidebarStyle}
+    >
+      <div className="mb-6 flex items-center gap-3">
+        <div
+          className={`flex h-12 w-12 items-center justify-center rounded-2xl text-xl font-bold text-white ${financeMode ? "" : "bg-[#2D8EFF]"}`}
+          style={
+            financeMode
+              ? {
+                  background: "linear-gradient(135deg,#10b981,#059669)",
+                  boxShadow: "0 0 24px rgba(16,185,129,0.3)"
+                }
+              : undefined
+          }
+        >
+          W
+        </div>
+        <div>
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${financeMode ? "text-slate-500" : "text-slate-400"}`}>Workspace</p>
+          <h1
+            className={`${financeMode ? "text-white" : "text-slate-900"}`}
+            style={{ fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 13, fontWeight: 700 }}
+          >
+            Business Messenger
+          </h1>
+        </div>
+      </div>
+
+      <nav className="flex flex-1 flex-col gap-1.5">
+        {NAV_ITEMS.filter((item) => canSeeNavItem(item.id, workspaceScope)).map((item) => {
+          const active = activeNav === item.id;
+          const showBadge = item.id === "inbox" && totalUnread > 0;
+          const financeActive = financeMode && active && item.id === "finances";
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onNavChange(item.id)}
+              className={`relative flex min-h-[44px] items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                financeMode
+                  ? active
+                    ? "text-white"
+                    : "text-slate-400 hover:bg-white/4 hover:text-slate-200"
+                  : active
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-500 hover:bg-white hover:text-slate-900"
+              }`}
+              style={
+                financeMode && active
+                  ? {
+                      background: financeActive
+                        ? "linear-gradient(90deg, rgba(16,185,129,0.16), rgba(16,185,129,0.04))"
+                        : "rgba(255,255,255,0.06)"
+                    }
+                  : undefined
+              }
+            >
+              {financeMode && active ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute left-0 top-1/2 h-8 w-[3px] -translate-y-1/2 rounded-full"
+                  style={{ background: financeActive ? "#10b981" : "#60a5fa", boxShadow: financeActive ? "0 0 12px rgba(16,185,129,0.45)" : "0 0 10px rgba(96,165,250,0.35)" }}
+                />
+              ) : null}
+              <span className={`flex h-10 w-10 items-center justify-center rounded-xl text-base ${
+                financeMode
+                  ? active
+                    ? "bg-white/10 text-white"
+                    : "bg-white/5 text-slate-400"
+                  : active
+                    ? "bg-[#E8F2FF] text-[#2D8EFF]"
+                    : "bg-slate-100 text-slate-500"
+              }`}>
+                {item.icon}
+              </span>
+              <span className="flex-1 font-medium">{item.label}</span>
+              {showBadge ? (
+                <motion.span
+                  key={totalUnread}
+                  initial={{ scale: 0.7, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className="ml-auto inline-flex min-w-6 items-center justify-center rounded-full px-2 text-xs font-bold text-white"
+                  style={{ background: financeMode ? "rgba(100,116,139,0.5)" : "#2D8EFF" }}
+                >
+                  {totalUnread}
+                </motion.span>
+              ) : null}
+              {financeMode && financeActive ? (
+                <span
+                  className="ml-auto inline-flex rounded-full px-2 py-1 text-[9px] font-bold uppercase tracking-[0.16em]"
+                  style={{
+                    background: "rgba(16,185,129,0.18)",
+                    border: "1px solid rgba(16,185,129,0.3)",
+                    color: "#10b981"
+                  }}
+                >
+                  Active
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
+
+      {financeMode ? (
+        <div
+          className="mb-4 rounded-xl px-3 py-2"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            border: "1px solid rgba(255,255,255,0.07)"
+          }}
+        >
+          <div className="text-[9px] uppercase tracking-[0.18em] text-slate-500">Testing role</div>
+          <div className="mt-2 flex items-center justify-between rounded-lg bg-[rgba(255,255,255,0.03)] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              <span className="text-sm font-semibold text-white capitalize">{currentUser.role}</span>
+            </div>
+            <span className="text-slate-500">▾</span>
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        className={`mt-4 rounded-2xl p-3 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+        style={
+          financeMode
+            ? {
+                border: "1px solid rgba(255,255,255,0.07)",
+                background: "rgba(255,255,255,0.04)"
+              }
+            : undefined
+        }
+      >
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <div
+              className="flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold"
+              style={
+                financeMode
+                  ? { background: "linear-gradient(135deg,#10b981,#059669)", color: "#fff" }
+                  : { background: "#E8F2FF", color: "#2D8EFF" }
+              }
+            >
+              {currentUser.name
+                .split(/\s+/)
+                .map((part) => part[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </div>
+            {financeMode ? (
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  right: -2,
+                  bottom: -1,
+                  width: 12,
+                  height: 12,
+                  borderRadius: "50%",
+                  background: "#10b981",
+                  border: "2px solid #080d16"
+                }}
+              />
+            ) : null}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className={`truncate text-sm font-semibold ${financeMode ? "text-white" : "text-slate-900"}`}>{currentUser.name}</p>
+            <div
+              className="mt-1 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold capitalize"
+              style={badgeStyle}
+            >
+              {currentUser.role}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleSound}
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full transition"
+            style={
+              financeMode
+                ? { border: "1px solid rgba(255,255,255,0.1)", color: "#cbd5e1" }
+                : undefined
+            }
+            title={settings.soundEnabled ? "Sound on" : "Sound off"}
+          >
+            {settings.soundEnabled ? "🔔" : "🔕"}
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+// ----- workspace/layout/ThreadListPanel.jsx -----
+function ThreadListPanel({ role, activeNav, activeThreadId, onOpenThread, filter, onFilterChange, search, onSearchChange, financeMode, workspaceScope, workspaceMode }) {
+  const { threads } = useThreadList();
+  const showWorkspaceOverviewPanel = activeNav === "home";
+  const showWorkspaceUsersPanel = activeNav === "users";
+  const threadPanelStyle = financeMode
+    ? {
+        width: "clamp(232px, 24vw, 300px)",
+        minWidth: 232,
+        maxWidth: 300,
+        boxShadow: "inset -1px 0 0 rgba(255,255,255,0.04)"
+      }
+    : {
+        width: "clamp(232px, 24vw, 300px)",
+        minWidth: 232,
+        maxWidth: 300
+      };
+  const visibleThreads = useMemo(() => {
+    return threads
+      .filter((thread) => canSeeThread(thread, role, workspaceScope, workspaceMode))
+      .filter((thread) => {
+        if (filter === "archived") {
+          return thread.archived;
+        }
+        return !thread.archived;
+      })
+      .filter((thread) => thread.name.toLowerCase().includes(search.toLowerCase()));
+  }, [filter, role, search, threads, workspaceMode, workspaceScope]);
+
+  if (showWorkspaceOverviewPanel) {
+    return (
+      <section
+        className={`flex h-full flex-col px-4 py-5 ${financeMode ? "border-r border-white/5 bg-[#0d1420]" : "border-r border-slate-200 bg-white"}`}
+        style={threadPanelStyle}
+      >
+        <div className="mb-4">
+          <h2
+            className={`${financeMode ? "text-white" : "text-slate-900"}`}
+            style={{ fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em" }}
+          >
+            Overview
+          </h2>
+          <p className={`mt-2 text-sm leading-6 ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+            Your workspace front door for operational health, attention items, and the fastest path into Finance and Warehouse.
+          </p>
+        </div>
+
+        <div
+          className="rounded-[18px] p-4"
+          style={
+            financeMode
+              ? {
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)"
+                }
+              : {
+                  border: "1px solid rgba(148,163,184,0.16)",
+                  background: "#f8fafc"
+                }
+          }
+        >
+          <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>
+            Operations view
+          </div>
+          <div className={`mt-3 text-sm leading-6 ${financeMode ? "text-slate-300" : "text-slate-600"}`}>
+            Use this space to spot overdue finance work, warehouse pressure, and overall business momentum before diving into a specific module.
+          </div>
+        </div>
+
+        <div
+          className="mt-4 rounded-[18px] p-4"
+          style={
+            financeMode
+              ? {
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)"
+                }
+              : {
+                  border: "1px solid rgba(148,163,184,0.16)",
+                  background: "#f8fafc"
+                }
+          }
+        >
+          <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-emerald-300" : "text-slate-500"}`}>
+            Best for
+          </div>
+          <div className={`mt-3 space-y-2 text-sm ${financeMode ? "text-slate-300" : "text-slate-600"}`}>
+            <div>Owner or manager users checking what needs attention.</div>
+            <div>Both-module workspaces that need one operational picture.</div>
+            <div>Fast entry into the right module once priorities are clear.</div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (showWorkspaceUsersPanel) {
+    return (
+      <section
+        className={`flex h-full flex-col px-4 py-5 ${financeMode ? "border-r border-white/5 bg-[#0d1420]" : "border-r border-slate-200 bg-white"}`}
+        style={threadPanelStyle}
+      >
+        <div className="mb-4">
+          <h2
+            className={`${financeMode ? "text-white" : "text-slate-900"}`}
+            style={{ fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em" }}
+          >
+            Workspace
+          </h2>
+          <p className={`mt-2 text-sm leading-6 ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+            Manage members, roles, and module access from the settings panel on the right.
+          </p>
+        </div>
+
+        <div
+          className="rounded-[18px] p-4"
+          style={
+            financeMode
+              ? {
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)"
+                }
+              : {
+                  border: "1px solid rgba(148,163,184,0.16)",
+                  background: "#f8fafc"
+                }
+          }
+        >
+          <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>
+            Workspace admin
+          </div>
+          <div className={`mt-3 text-sm leading-6 ${financeMode ? "text-slate-300" : "text-slate-600"}`}>
+            This area is separate from FinanceBot and WareBot so workspace administration stays clear and doesn’t get mixed into chat threads.
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section
+      className={`flex h-full flex-col px-4 py-5 ${financeMode ? "border-r border-white/5 bg-[#0d1420]" : "border-r border-slate-200 bg-white"}`}
+      style={threadPanelStyle}
+    >
+      <div className="mb-4">
+        <h2
+          className={`${financeMode ? "text-white" : "text-slate-900"}`}
+          style={{ fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 20, fontWeight: 700, letterSpacing: "-0.03em" }}
+        >
+          Inbox
+        </h2>
+        <div
+          className="relative z-10 mt-3 flex shrink-0 rounded-full p-1 text-sm font-semibold"
+          style={
+            financeMode
+              ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "#64748b" }
+              : { background: "#f1f5f9", color: "#64748b" }
+          }
+        >
+          {[
+            { id: "inbox", label: "Inbox" },
+            { id: "archived", label: "Archived" }
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onFilterChange(item.id === "inbox" ? "inbox" : "archived")}
+              className="relative z-10 flex-1 rounded-full px-4 py-2 transition"
+              style={
+                filter === (item.id === "inbox" ? "inbox" : "archived")
+                  ? financeMode
+                    ? {
+                        background: "rgba(255,255,255,0.1)",
+                        color: "#fff"
+                      }
+                    : {
+                        background: "#fff",
+                        color: "#0f172a",
+                        boxShadow: "0 1px 3px rgba(15,23,42,0.08)"
+                      }
+                  : undefined
+              }
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div
+        className="mb-4 rounded-xl px-4 py-3"
+        style={
+          financeMode
+            ? { background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }
+            : { background: "#f1f5f9" }
+        }
+      >
+        <div className="flex items-center gap-2">
+          {financeMode ? <span className="text-sm text-slate-500">🔍</span> : null}
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={financeMode ? "Search threads..." : "Search inbox threads"}
+            className={`w-full border-none bg-transparent text-sm outline-none ${financeMode ? "text-slate-100 placeholder:text-slate-600" : "text-slate-700 placeholder:text-slate-400"}`}
+          />
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto pr-1">
+        <AnimatePresence initial={false}>
+          {visibleThreads.map((thread) => {
+            const avatar = avatarForThread(thread);
+            const descriptor = financeThreadDescriptor(thread);
+            return (
+              <motion.button
+                key={thread.id}
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                type="button"
+                onClick={() => onOpenThread(thread.id)}
+                className="mb-2.5 w-full rounded-[14px] border px-3 py-3 text-left transition"
+                style={
+                  financeMode
+                    ? activeThreadId === thread.id
+                      ? {
+                          minHeight: 72,
+                          background: thread.id === "financebot"
+                            ? "linear-gradient(90deg, rgba(16,185,129,0.14), rgba(16,185,129,0.03))"
+                            : "rgba(255,255,255,0.03)",
+                          borderColor: thread.id === "financebot" ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.08)",
+                          boxShadow: thread.id === "financebot" ? "inset 2px 0 0 #10b981" : "none"
+                        }
+                      : {
+                          minHeight: 72,
+                          background: "transparent",
+                          borderColor: "transparent"
+                        }
+                    : activeThreadId === thread.id
+                      ? {
+                          borderColor: "rgba(45,142,255,0.2)",
+                          background: "#F6FAFF",
+                          boxShadow: "0 1px 3px rgba(15,23,42,0.08)"
+                        }
+                      : {
+                          borderColor: "transparent",
+                          background: "#fff"
+                        }
+                }
+              >
+                <div className="flex items-start gap-3">
+                  <div className="relative">
+                    <div
+                      className={`flex h-12 w-12 items-center justify-center rounded-2xl ${avatar.fg}`}
+                      style={
+                        financeMode
+                          ? thread.id === "financebot"
+                            ? {
+                                background: descriptor.bg,
+                                border: `2px solid ${descriptor.ring}`
+                              }
+                            : thread.id === "warebot"
+                              ? {
+                                  background: descriptor.bg,
+                                  border: `2px solid ${descriptor.ring}`
+                                }
+                              : {
+                                  background: descriptor.bg,
+                                  border: `1px solid ${descriptor.ring}`,
+                                  color: "#fff"
+                                }
+                          : undefined
+                      }
+                    >
+                      {avatar.label}
+                    </div>
+                    <span className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 ${financeMode ? "border-[#0d1420]" : "border-white"} ${thread.online ? "bg-emerald-400" : "bg-slate-300"}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={`truncate text-sm ${financeMode ? (thread.unread ? "font-bold text-white" : "font-semibold text-slate-200") : thread.unread ? "font-bold text-slate-900" : "font-semibold text-slate-800"}`}>
+                        {thread.isBot ? `${thread.id === "financebot" ? "💰" : "📦"} ${thread.name}` : thread.name}
+                      </span>
+                      <span className={`ml-auto shrink-0 text-xs ${financeMode ? "text-slate-500" : "text-slate-400"}`}>{relativeTime(thread.updatedAt)}</span>
+                    </div>
+                    {financeMode && thread.isBot ? (
+                      <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.18em]" style={{ color: descriptor.accent }}>
+                        {descriptor.label}
+                      </p>
+                    ) : null}
+                    <p className={`mt-1 truncate text-sm ${financeMode ? (thread.unread ? "font-medium text-slate-400" : "text-slate-500") : thread.unread ? "font-semibold text-slate-700" : "text-slate-500"}`}>
+                      {thread.preview}
+                    </p>
+                  </div>
+                  {thread.unread ? (
+                    <motion.span
+                      key={`${thread.id}-${thread.unread}`}
+                      initial={{ scale: 0.7, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      className="inline-flex min-w-6 items-center justify-center rounded-full px-2 text-xs font-bold text-white"
+                      style={{ background: financeMode ? (thread.id === "financebot" ? "#10b981" : "#f59e0b") : "#2D8EFF" }}
+                    >
+                      {thread.unread}
+                    </motion.span>
+                  ) : null}
+                </div>
+              </motion.button>
+            );
+          })}
+        </AnimatePresence>
+      </div>
+    </section>
+  );
+}
+
+// ----- workspace/menus/WorkspaceNotificationMenu.jsx -----
+function WorkspaceNotificationMenu({
+  financeMode = false,
+  unreadCount = 0,
+  notifications = [],
+  loading = false,
+  onOpenNotification = null,
+  onMarkAllRead = null,
+  markAllLoading = false
+}) {
+  return (
+    <div
+      className="absolute right-0 top-[calc(100%+10px)] z-30 w-[340px] rounded-[20px] p-2"
+      style={{
+        border: financeMode ? "1px solid rgba(255,255,255,0.1)" : "1px solid #e2e8f0",
+        background: financeMode
+          ? "linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,22,35,0.98))"
+          : "#ffffff",
+        boxShadow: financeMode ? "0 24px 60px rgba(0,0,0,0.42)" : "0 24px 50px rgba(15,23,42,0.12)"
+      }}
+    >
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <div>
+          <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+            Notifications
+          </div>
+          <div className={`mt-1 text-sm ${financeMode ? "text-slate-300" : "text-slate-600"}`}>
+            {unreadCount ? `${unreadCount} unread` : "All caught up"}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onMarkAllRead}
+          disabled={!unreadCount || !onMarkAllRead || markAllLoading}
+          className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+            financeMode
+              ? "border border-white/10 bg-white/5 text-slate-200 disabled:text-slate-500"
+              : "border border-slate-200 bg-slate-50 text-slate-600 disabled:text-slate-400"
+          }`}
+        >
+          {markAllLoading ? "Marking..." : "Mark all read"}
+        </button>
+      </div>
+      <div className="max-h-[380px] overflow-y-auto px-1 pb-1">
+        {loading ? (
+          <div className={`rounded-[16px] px-4 py-5 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+            Loading notifications...
+          </div>
+        ) : notifications.length ? (
+          notifications.map((notification) => {
+            const toneStyles = buildNotificationToneStyles(
+              notification?.type === "task_overdue"
+                ? "danger"
+                : notification?.type === "task_due_soon"
+                  ? "warning"
+                  : "info",
+              financeMode
+            );
+
+            return (
+              <button
+                key={notification.id}
+                type="button"
+                onClick={() => onOpenNotification?.(notification)}
+                className={`mb-1 flex w-full items-start gap-3 rounded-[16px] px-3 py-3 text-left transition ${
+                  financeMode ? "hover:bg-white/6" : "hover:bg-slate-50"
+                }`}
+              >
+                <span
+                  className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold"
+                  style={toneStyles}
+                >
+                  {workspaceNotificationIcon(notification.type)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-800"}`}>
+                    {notification.message}
+                  </span>
+                  <span className={`mt-1 block text-xs ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+                    {formatTimeAgo(notification.createdAt)}
+                  </span>
+                </span>
+              </button>
+            );
+          })
+        ) : (
+          <div
+            className={`rounded-[16px] px-4 py-8 text-center text-sm ${
+              financeMode ? "text-slate-400" : "text-slate-500"
+            }`}
+          >
+            No unread assignment notifications right now.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/menus/QuickActionMenu.jsx -----
+function QuickActionMenu({ items, onSelect }) {
+  return (
+    <div
+      className="absolute right-0 top-[calc(100%+10px)] z-20 w-[280px] rounded-[18px] p-2"
+      style={{
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,22,35,0.98))",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.42)"
+      }}
+    >
+      <div className="px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Quick actions
+      </div>
+      <div className="space-y-1">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className="flex w-full items-start gap-3 rounded-[14px] px-3 py-3 text-left transition hover:bg-white/6"
+          >
+            <span
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base"
+              style={{
+                background: `${item.accent}18`,
+                border: `1px solid ${item.accent}33`,
+                color: item.accent
+              }}
+            >
+              {item.icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-100">{item.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{item.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/menus/ToolbarOverflowMenu.jsx -----
+function ToolbarOverflowMenu({ items, onSelect }) {
+  return (
+    <div
+      className="absolute right-0 top-[calc(100%+10px)] z-20 w-[260px] rounded-[18px] p-2"
+      style={{
+        border: "1px solid rgba(255,255,255,0.1)",
+        background: "linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,22,35,0.98))",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.42)"
+      }}
+    >
+      <div className="px-2 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        More actions
+      </div>
+      <div className="space-y-1">
+        {items.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onSelect(item.id)}
+            className="flex w-full items-start gap-3 rounded-[14px] px-3 py-3 text-left transition hover:bg-white/6"
+          >
+            <span
+              className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-base"
+              style={{
+                background: `${item.accent}18`,
+                border: `1px solid ${item.accent}33`,
+                color: item.accent
+              }}
+            >
+              {item.icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-slate-100">{item.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-400">{item.description}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceEntryModal.jsx -----
+function FinanceEntryModal({
+  type,
+  values,
+  onChange,
+  onFileChange,
+  customerSuggestions = [],
+  vendorSuggestions = [],
+  categorySuggestions = [],
+  onClose,
+  onSubmit,
+  submitting = false,
+  workspaceDefaultCurrency = "USD"
+}) {
+  const isInvoice = type === "invoice";
+  const isEditingInvoice = isInvoice && Boolean(values.invoiceId);
+  const isEditingExpense = !isInvoice && Boolean(values.expenseId);
+  const taxPreview = computeTaxPreview(values.amount, values.taxRate);
+  const resolvedCurrency = values.currency || workspaceDefaultCurrency || "USD";
+  const title = isInvoice
+    ? isEditingInvoice
+      ? "Edit Invoice"
+      : "New Invoice"
+    : isEditingExpense
+      ? "Edit Expense"
+      : "Log Expense";
+  const description = isInvoice
+    ? isEditingInvoice
+      ? "Update the invoice details and save the changes back into FinanceBot."
+      : "Create a finance invoice with the details your team needs to process next."
+    : isEditingExpense
+      ? "Update the expense details and save the changes back into FinanceBot."
+      : "Log a new finance expense with category and note details.";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-30 flex justify-center p-2 sm:p-4"
+      style={{
+        background: "rgba(2,6,23,0.68)",
+        backdropFilter: "blur(8px)",
+        overflowY: "auto",
+        alignItems: "flex-start"
+      }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ duration: 0.2 }}
+        style={{
+          width: "min(640px, calc(100vw - 16px))",
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.1)",
+          background: "linear-gradient(180deg,#111827 0%,#0f1623 100%)",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.42)",
+          padding: 16,
+          maxHeight: "calc(100vh - 16px)",
+          overflowY: "auto",
+          margin: "auto 0"
+        }}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">
+          Finance entry
+        </div>
+        <h3
+          style={{
+            margin: "6px 0 0",
+            fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+            fontSize: 22,
+            lineHeight: 1.2,
+            fontWeight: 700,
+            color: "#f8fafc"
+          }}
+        >
+          {title}
+        </h3>
+        <p className="mt-2 text-sm leading-5 text-slate-400">{description}</p>
+
+        <form
+          className="mt-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+          style={{
+            display: "grid",
+            gap: 12
+          }}
+        >
+          {isInvoice ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Invoice Number</span>
+                  <input
+                    value={values.invoiceNumber || ""}
+                    onChange={(event) => onChange("invoiceNumber", event.target.value.toUpperCase())}
+                    placeholder="INV-501"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Amount</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={values.amount || ""}
+                    onChange={(event) => onChange("amount", event.target.value)}
+                    placeholder="9800"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Customer Name</span>
+                  <input
+                    value={values.customerName || values.vendorName || ""}
+                    onChange={(event) => onChange("customerName", event.target.value)}
+                    placeholder="Northwind Labs"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Due Date</span>
+                  <input
+                    type="date"
+                    value={values.dueDate || ""}
+                    onChange={(event) => onChange("dueDate", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Customer Email</span>
+                  <input
+                    type="email"
+                    value={values.customerEmail || ""}
+                    onChange={(event) => onChange("customerEmail", event.target.value)}
+                    placeholder="billing@northwind.com"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Currency</span>
+                  <select
+                    value={resolvedCurrency}
+                    onChange={(event) => onChange("currency", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  >
+                    {FINANCE_CURRENCY_OPTIONS.map((currency) => (
+                      <option key={`invoice-currency-${currency}`} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Recurring Invoice</span>
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onChange("recurringEnabled", !values.recurringEnabled)}
+                      className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-semibold text-slate-200"
+                    >
+                      {values.recurringEnabled ? "Enabled" : "Off"}
+                    </button>
+                    <select
+                      value={values.recurringFrequency || "monthly"}
+                      onChange={(event) => onChange("recurringFrequency", event.target.value)}
+                      disabled={!values.recurringEnabled}
+                      className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none disabled:opacity-60"
+                    >
+                      <option value="weekly">Weekly</option>
+                      <option value="monthly">Monthly</option>
+                      <option value="quarterly">Quarterly</option>
+                    </select>
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Note</span>
+                  <textarea
+                    rows={2}
+                    value={values.note || ""}
+                    onChange={(event) => onChange("note", event.target.value)}
+                    placeholder="Extra billing context or internal note"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tax rate %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={values.taxRate || "0"}
+                    onChange={(event) => onChange("taxRate", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tax label</span>
+                  <input
+                    value={values.taxLabel || "Tax"}
+                    onChange={(event) => onChange("taxLabel", event.target.value)}
+                    placeholder="Tax / VAT / GST"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Subtotal</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.subtotal, resolvedCurrency)}</div>
+                </div>
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{values.taxLabel || "Tax"}</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.taxAmount, resolvedCurrency)}</div>
+                </div>
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.totalWithTax, resolvedCurrency)}</div>
+                </div>
+              </div>
+              {customerSuggestions.length ? (
+                <div>
+                  <div className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Recent Customers</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {customerSuggestions.map((customer) => (
+                      <button
+                        key={`invoice-customer-${customer}`}
+                        type="button"
+                        onClick={() => onChange("customerName", customer)}
+                        className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+                      >
+                        {customer}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+                <label className="block min-w-0">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Attachment</span>
+                  <input
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={(event) => onFileChange(event.target.files?.[0] || null)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 outline-none file:mr-3 file:rounded-[10px] file:border-0 file:bg-emerald-500/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-emerald-300"
+                  />
+                </label>
+                {values.attachment?.fileName ? (
+                  <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-slate-400">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Selected</div>
+                    <div className="mt-1.5 break-words">{values.attachment.fileName}</div>
+                  </div>
+                ) : <div />}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Amount</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={values.amount || ""}
+                    onChange={(event) => onChange("amount", event.target.value)}
+                    placeholder="450"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Currency</span>
+                  <select
+                    value={resolvedCurrency}
+                    onChange={(event) => onChange("currency", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  >
+                    {FINANCE_CURRENCY_OPTIONS.map((currency) => (
+                      <option key={`expense-currency-${currency}`} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Category</span>
+                  <input
+                    value={values.category || ""}
+                    onChange={(event) => onChange("category", event.target.value.toLowerCase())}
+                    placeholder="supplies"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                  {categorySuggestions.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {categorySuggestions.map((category) => (
+                        <button
+                          key={`expense-category-${category}`}
+                          type="button"
+                          onClick={() => onChange("category", category)}
+                          className="rounded-full border px-2.5 py-1 text-xs font-semibold capitalize transition"
+                          style={{
+                            borderColor: values.category === category ? "rgba(16,185,129,0.4)" : "rgba(255,255,255,0.1)",
+                            background: values.category === category ? "rgba(16,185,129,0.16)" : "rgba(255,255,255,0.05)",
+                            color: values.category === category ? "#10b981" : "#cbd5e1"
+                          }}
+                        >
+                          {category}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Expense Date</span>
+                  <input
+                    type="date"
+                    value={values.expenseDate || todayDateInputValue()}
+                    onChange={(event) => onChange("expenseDate", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vendor Name</span>
+                  <input
+                    value={values.vendorName || ""}
+                    onChange={(event) => onChange("vendorName", event.target.value)}
+                    placeholder="Office Depot"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vendor Email</span>
+                  <input
+                    type="email"
+                    value={values.vendorEmail || ""}
+                    onChange={(event) => onChange("vendorEmail", event.target.value)}
+                    placeholder="accounts@officedepot.com"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[140px_minmax(0,1fr)]">
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tax rate %</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={values.taxRate || "0"}
+                    onChange={(event) => onChange("taxRate", event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Tax label</span>
+                  <input
+                    value={values.taxLabel || "Tax"}
+                    onChange={(event) => onChange("taxLabel", event.target.value)}
+                    placeholder="Tax / VAT / GST"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Subtotal</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.subtotal, resolvedCurrency)}</div>
+                </div>
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{values.taxLabel || "Tax"}</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.taxAmount, resolvedCurrency)}</div>
+                </div>
+                <div className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-300">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total</div>
+                  <div className="mt-2 font-semibold text-slate-100">{formatMoney(taxPreview.totalWithTax, resolvedCurrency)}</div>
+                </div>
+              </div>
+              {vendorSuggestions.length ? (
+                <div>
+                  <div className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Recent Vendors</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {vendorSuggestions.map((vendor) => (
+                      <button
+                        key={`expense-vendor-${vendor}`}
+                        type="button"
+                        onClick={() => onChange("vendorName", vendor)}
+                        className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300 transition hover:bg-white/10 hover:text-white"
+                      >
+                        {vendor}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px]">
+                <label className="block min-w-0">
+                  <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Note</span>
+                  <textarea
+                    rows={2}
+                    value={values.note || ""}
+                    onChange={(event) => onChange("note", event.target.value)}
+                    placeholder="Packaging tape for outbound shipments"
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  />
+                </label>
+                <div className="grid gap-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Receipt</span>
+                    <input
+                      type="file"
+                      accept=".pdf,image/*"
+                      onChange={(event) => onFileChange(event.target.files?.[0] || null)}
+                      className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-300 outline-none file:mr-3 file:rounded-[10px] file:border-0 file:bg-sky-500/20 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-sky-300"
+                    />
+                  </label>
+                  {values.receipt?.fileName ? (
+                    <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-slate-400">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Selected</div>
+                      <div className="mt-1.5 break-words">{values.receipt.fileName}</div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="h-10 rounded-[12px] border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="h-10 rounded-[12px] px-5 text-sm font-semibold text-white"
+              style={{
+                background: "linear-gradient(135deg,#10b981,#059669)",
+                boxShadow: "0 14px 28px rgba(5,150,105,0.24)"
+              }}
+            >
+              {submitting
+                ? "Saving..."
+                : isInvoice
+                  ? isEditingInvoice
+                    ? "Save Invoice"
+                    : "Create Invoice"
+                  : isEditingExpense
+                    ? "Save Expense"
+                    : "Log Expense"}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ----- workspace/finance/InvoicePaymentModal.jsx -----
+function InvoicePaymentModal({ invoice, values, onChange, onClose, onSubmit, submitting = false }) {
+  if (!invoice) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="absolute inset-0 z-30 flex justify-center p-2 sm:p-4"
+      style={{ background: "rgba(2,6,23,0.72)", backdropFilter: "blur(8px)", overflowY: "auto", alignItems: "flex-start" }}
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 18, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ duration: 0.2 }}
+        style={{
+          width: "min(480px, calc(100vw - 16px))",
+          borderRadius: 24,
+          border: "1px solid rgba(255,255,255,0.1)",
+          background: "linear-gradient(180deg,#111827 0%,#0f1623 100%)",
+          boxShadow: "0 24px 60px rgba(0,0,0,0.42)",
+          padding: 16,
+          maxHeight: "calc(100vh - 16px)",
+          overflowY: "auto",
+          margin: "auto 0"
+        }}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Record payment</div>
+        <h3 style={{ margin: "6px 0 0", fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 22, lineHeight: 1.2, fontWeight: 700, color: "#f8fafc" }}>
+          {invoice.invoiceNumber}
+        </h3>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          Record a full or partial payment for {invoice.customerName || invoice.companyName || "this customer"} without losing the remaining balance.
+        </p>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-[16px] border border-white/10 bg-white/5 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Invoice total</div>
+            <div className="mt-2 text-base font-semibold text-slate-100">{formatMoney(invoice.amount, invoice.currency)}</div>
+          </div>
+          <div className="rounded-[16px] border border-white/10 bg-white/5 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Already paid</div>
+            <div className="mt-2 text-base font-semibold text-emerald-300">{formatMoney(invoice.paidAmount || 0, invoice.currency)}</div>
+          </div>
+          <div className="rounded-[16px] border border-white/10 bg-white/5 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Remaining</div>
+            <div className="mt-2 text-base font-semibold text-amber-200">{formatMoney(invoice.outstandingAmount || 0, invoice.currency)}</div>
+          </div>
+        </div>
+
+        <form
+          className="mt-4 grid gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Payment Amount</span>
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={values.amount || ""}
+              onChange={(event) => onChange("amount", event.target.value)}
+              placeholder={String(invoice.outstandingAmount || "")}
+              className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Method</span>
+              <select
+                value={values.method || "bank_transfer"}
+                onChange={(event) => onChange("method", event.target.value)}
+                className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none"
+              >
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="card">Card</option>
+                <option value="cash">Cash</option>
+                <option value="mobile_wallet">Mobile wallet</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Reference</span>
+              <input
+                type="text"
+                value={values.reference || ""}
+                onChange={(event) => onChange("reference", event.target.value)}
+                placeholder="TRX-2026-001"
+                className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+              />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Note</span>
+            <textarea
+              rows={3}
+              value={values.note || ""}
+              onChange={(event) => onChange("note", event.target.value)}
+              placeholder="Optional payment context for the finance team"
+              className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="h-10 rounded-[12px] border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-300"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="h-10 rounded-[12px] px-5 text-sm font-semibold text-white"
+              style={{ background: "linear-gradient(135deg,#10b981,#059669)", boxShadow: "0 14px 28px rgba(5,150,105,0.24)" }}
+            >
+              {submitting ? "Saving..." : "Record Payment"}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ----- workspace/finance/FinanceSummaryPanels.jsx -----
+function FinanceHeroStrip({ metrics, onSelect }) {
+  const items = metrics.slice(0, 4);
+
+  return (
+    <div
+      className="mb-6 grid gap-0 xl:grid-cols-4"
+      style={{
+        borderRadius: 22,
+        padding: "20px 24px",
+        background: "linear-gradient(135deg,#111827,#0f1f2e)",
+        border: "1px solid rgba(16,185,129,0.14)",
+        boxShadow: "0 20px 60px rgba(0,0,0,0.35)"
+      }}
+    >
+      {items.map((metric, index) => {
+        const meta = financeMetricMeta(metric);
+        const expenseRatio = metric.id === "finance-expenses" ? 82 : null;
+
+        return (
+          <button
+            key={metric.id}
+            type="button"
+            onClick={() => onSelect(metric)}
+            className="text-left transition hover:-translate-y-0.5"
+            style={{
+              minHeight: 78,
+              paddingLeft: index ? 24 : 0,
+              borderLeft: index ? "1px solid rgba(255,255,255,0.06)" : "none"
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-full text-sm"
+                style={{
+                  background: metric.id === "finance-overdue" ? "rgba(239,68,68,0.18)" : `${meta.accent}22`,
+                  color: meta.accent
+                }}
+              >
+                {metric.id === "finance-overdue" ? <span className="h-2.5 w-2.5 rounded-full bg-[#ef4444]" /> : meta.icon}
+              </div>
+              <span
+                style={{
+                  color: meta.accent,
+                  fontSize: 10,
+                  letterSpacing: "0.18em",
+                  fontWeight: 700
+                }}
+              >
+                {meta.label}
+              </span>
+            </div>
+            <div
+              style={{
+                marginTop: 14,
+                fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+                fontWeight: 800,
+                fontSize: 32,
+                lineHeight: 1.05,
+                color: metric.id === "finance-overdue" ? "#ef4444" : "#f8fafc"
+              }}
+            >
+              {metric.value}
+            </div>
+            {expenseRatio !== null ? (
+              <div className="mt-3">
+                <div className="h-2 overflow-hidden rounded-full bg-white/8">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${expenseRatio}%` }}
+                    transition={{ duration: 1, ease: "easeOut" }}
+                    className="h-full rounded-full"
+                    style={{ background: "linear-gradient(90deg,#ef4444,#f87171)" }}
+                  />
+                </div>
+                <div className="mt-2 text-xs text-slate-400">82% of budget</div>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs" style={{ color: meta.subColor }}>
+                {metric.subvalue}
+              </div>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function financeActivityCopy(entry) {
+  const actor = entry.performedBy?.name || "FinanceBot";
+
+  if (entry.itemType === "invoice") {
+    const invoiceNumber = entry.metadata?.invoiceNumber || "invoice";
+
+    switch (entry.action) {
+      case "created":
+        return {
+          title: `${invoiceNumber} created`,
+          body: `${actor} added the invoice to the finance queue.`,
+          accent: "#94a3b8"
+        };
+      case "approved":
+        return {
+          title: `${invoiceNumber} approved`,
+          body: `${actor} approved the invoice for payment.`,
+          accent: "#10b981"
+        };
+      case "rejected":
+        return {
+          title: `${invoiceNumber} rejected`,
+          body: entry.metadata?.rejectionReason
+            ? `${actor} rejected it: ${entry.metadata.rejectionReason}`
+            : `${actor} rejected the invoice.`,
+          accent: "#ef4444"
+        };
+      case "paid":
+        return {
+          title: `${invoiceNumber} marked paid`,
+          body: entry.metadata?.paymentStatus === "partial"
+            ? `${actor} recorded a partial payment${entry.metadata?.paymentMethod ? ` via ${formatPaymentMethod(entry.metadata.paymentMethod).toLowerCase()}` : ""}${entry.metadata?.paymentReference ? ` (${entry.metadata.paymentReference})` : ""} and left a balance open.`
+            : `${actor} confirmed the invoice was paid${entry.metadata?.paymentMethod ? ` via ${formatPaymentMethod(entry.metadata.paymentMethod).toLowerCase()}` : ""}${entry.metadata?.paymentReference ? ` (${entry.metadata.paymentReference})` : ""}.`,
+          accent: "#22c55e"
+        };
+      case "recurring_issued":
+        return {
+          title: `${invoiceNumber} issued next recurring invoice`,
+          body: entry.metadata?.generatedInvoiceNumber
+            ? `${actor} generated ${entry.metadata.generatedInvoiceNumber} from the recurring schedule.`
+            : `${actor} generated the next recurring invoice.`,
+          accent: "#10b981"
+        };
+      case "reconciled":
+        return {
+          title: `${invoiceNumber} reconciled`,
+          body: `${actor} reconciled the invoice.`,
+          accent: "#38bdf8"
+        };
+      default:
+        return {
+          title: `${invoiceNumber} updated`,
+          body: `${actor} updated the invoice.`,
+          accent: "#94a3b8"
+        };
+    }
+  }
+
+  const amount = entry.metadata?.amount ? formatMoney(entry.metadata.amount, entry.metadata?.currency || "USD") : "Expense";
+  const category = entry.metadata?.category ? ` under ${entry.metadata.category}` : "";
+
+  switch (entry.action) {
+    case "created":
+    case "submitted":
+      return {
+        title: `${amount} expense logged`,
+        body: `${actor} submitted an expense${category}.`,
+        accent: "#10b981"
+      };
+    case "note_added":
+      return {
+        title: `Expense note updated`,
+        body: `${actor} saved a finance note${category}.`,
+        accent: "#94a3b8"
+      };
+    case "approved":
+      return {
+        title: `${amount} expense approved`,
+        body: `${actor} approved the expense${category}.`,
+        accent: "#10b981"
+      };
+    case "rejected":
+      return {
+        title: `${amount} expense rejected`,
+        body: entry.metadata?.rejectionReason
+          ? `${actor} rejected the expense: ${entry.metadata.rejectionReason}`
+          : `${actor} rejected the expense${category}.`,
+        accent: "#ef4444"
+      };
+    case "reimbursed":
+      return {
+        title: `${amount} expense reimbursed`,
+        body: entry.metadata?.reference
+          ? `${actor} reimbursed the expense${category} with ref ${entry.metadata.reference}.`
+          : `${actor} reimbursed the expense${category}.`,
+        accent: "#22c55e"
+      };
+    case "reconciled":
+      return {
+        title: `${amount} expense reconciled`,
+        body: `${actor} reconciled the expense${category}.`,
+        accent: "#38bdf8"
+      };
+    default:
+      return {
+        title: `Expense updated`,
+        body: `${actor} updated an expense${category}.`,
+        accent: "#94a3b8"
+      };
+  }
+}
+
+function operationsTimelineCategoryTone(category, financeMode = false) {
+  if (category === "cross_module") {
+    return financeMode ? "#c4b5fd" : "#7c3aed";
+  }
+
+  if (category === "warehouse") {
+    return financeMode ? "#93c5fd" : "#2563eb";
+  }
+
+  if (category === "execution") {
+    return financeMode ? "#fcd34d" : "#d97706";
+  }
+
+  return financeMode ? "#6ee7b7" : "#059669";
+}
+
+function FinanceActivityFeed({ actions, compact = false }) {
+  if (!actions.length) {
+    return (
+      <div
+        className="rounded-2xl border p-4"
+        style={{
+          borderColor: "rgba(255,255,255,0.08)",
+          background: "rgba(255,255,255,0.04)",
+          color: "#94a3b8"
+        }}
+      >
+        No finance activity yet. Actions from invoices and expenses will appear here.
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="rounded-2xl border"
+      style={{
+        borderColor: "rgba(255,255,255,0.08)",
+        background: "rgba(255,255,255,0.04)"
+      }}
+    >
+      {actions.map((entry, index) => {
+        const copy = financeActivityCopy(entry);
+
+        return (
+          <div
+            key={entry.id}
+            style={{
+              padding: compact ? "12px 14px" : "14px 16px",
+              borderTop: index ? "1px solid rgba(255,255,255,0.06)" : "none",
+              display: "grid",
+              gap: 6
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    background: copy.accent,
+                    boxShadow: `0 0 16px ${copy.accent}55`
+                  }}
+                />
+                <p
+                  className="truncate"
+                  style={{
+                    margin: 0,
+                    color: "#f8fafc",
+                    fontWeight: 700,
+                    fontSize: compact ? 13 : 14
+                  }}
+                >
+                  {copy.title}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-slate-500">{relativeTime(entry.createdAt)}</span>
+            </div>
+            <p
+              style={{
+                margin: 0,
+                color: "#94a3b8",
+                fontSize: compact ? 12 : 13,
+                lineHeight: 1.6
+              }}
+            >
+              {copy.body}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function sortFinanceApprovalMessages(messages, sectionId) {
+  const sorted = [...messages];
+
+  if (sectionId === "needs-review") {
+    sorted.sort((first, second) => {
+      const firstOverdue = first.metadata.status === "overdue" ? 1 : 0;
+      const secondOverdue = second.metadata.status === "overdue" ? 1 : 0;
+      if (firstOverdue !== secondOverdue) {
+        return secondOverdue - firstOverdue;
+      }
+
+      return new Date(first.metadata.dueDate).getTime() - new Date(second.metadata.dueDate).getTime();
+    });
+    return sorted;
+  }
+
+  sorted.sort((first, second) => new Date(first.createdAt).getTime() - new Date(second.createdAt).getTime());
+  return sorted;
+}
+
+function buildFinanceApprovalSections(messages) {
+  const sections = [
+    {
+      id: "needs-review",
+      title: "Needs Review",
+      description: "Pending invoices and expenses waiting for a decision.",
+      accent: "#f59e0b",
+      items: []
+    },
+    {
+      id: "awaiting-payment",
+      title: "Awaiting Payment",
+      description: "Approved and partially paid invoices that still need payment attention.",
+      accent: "#22c55e",
+      items: []
+    },
+    {
+      id: "awaiting-reconciliation",
+      title: "Awaiting Reconciliation",
+      description: "Paid invoices and approved or reimbursed expenses that still need reconciliation.",
+      accent: "#38bdf8",
+      items: []
+    }
+  ];
+
+  const sectionMap = new Map(sections.map((section) => [section.id, section]));
+
+  messages.forEach((message) => {
+    if (message.type === "invoice") {
+      if (message.metadata.status === "pending" || message.metadata.status === "overdue") {
+        sectionMap.get("needs-review")?.items.push(message);
+        return;
+      }
+
+      if (message.metadata.status === "approved" || message.metadata.status === "partial") {
+        sectionMap.get("awaiting-payment")?.items.push(message);
+        return;
+      }
+
+      if (message.metadata.status === "paid") {
+        sectionMap.get("awaiting-reconciliation")?.items.push(message);
+      }
+      return;
+    }
+
+    if (
+      message.type === "expense" &&
+      message.metadata.expenseId &&
+      normalizeFinanceExpenseStatus(message.metadata.status) === "pending_review"
+    ) {
+      sectionMap.get("needs-review")?.items.push(message);
+      return;
+    }
+
+    if (
+      message.type === "expense" &&
+      message.metadata.expenseId &&
+      ["approved", "reimbursed"].includes(normalizeFinanceExpenseStatus(message.metadata.status))
+    ) {
+      sectionMap.get("awaiting-reconciliation")?.items.push(message);
+    }
+  });
+
+  return sections
+    .map((section) => ({
+      ...section,
+      items: sortFinanceApprovalMessages(section.items, section.id)
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+function buildFinanceQueueSummary(messages) {
+  const invoiceMessages = messages.filter((message) => message.type === "invoice");
+  const expenseMessages = messages.filter((message) => message.type === "expense");
+
+  const pendingDecision = [
+    ...invoiceMessages.filter(
+      (message) => message.metadata.status === "pending" || message.metadata.status === "overdue"
+    ),
+    ...expenseMessages.filter(
+      (message) => message.metadata.expenseId && normalizeFinanceExpenseStatus(message.metadata.status) === "pending_review"
+    )
+  ];
+  const overdueInvoices = invoiceMessages.filter((message) => message.metadata.status === "overdue");
+  const dueSoonInvoices = invoiceMessages.filter((message) => {
+    if (!["pending", "approved", "partial"].includes(message.metadata.status)) {
+      return false;
+    }
+
+    const diffDays = Math.ceil((new Date(message.metadata.dueDate).getTime() - Date.now()) / 86400000);
+    return diffDays >= 0 && diffDays <= 1;
+  });
+  const awaitingPayment = invoiceMessages.filter((message) => ["approved", "partial"].includes(message.metadata.status));
+  const awaitingReconciliation = [
+    ...invoiceMessages.filter((message) => message.metadata.status === "paid"),
+    ...expenseMessages.filter(
+      (message) => message.metadata.expenseId && ["approved", "reimbursed"].includes(normalizeFinanceExpenseStatus(message.metadata.status))
+    )
+  ];
+
+  const notices = [];
+
+  if (overdueInvoices.length) {
+    notices.push({
+      id: "overdue",
+      eyebrow: "Urgent",
+      title: `${overdueInvoices.length} overdue invoice${overdueInvoices.length === 1 ? "" : "s"} need attention`,
+      body: "These invoices have passed their due date and should be reviewed or escalated first.",
+      accent: "#ef4444",
+      tone: "danger"
+    });
+  }
+
+  if (dueSoonInvoices.length) {
+    notices.push({
+      id: "due-soon",
+      eyebrow: "Due today",
+      title: `${dueSoonInvoices.length} invoice${dueSoonInvoices.length === 1 ? "" : "s"} are close to deadline`,
+      body: "These invoices are due now or within the next day and should stay near the top of the queue.",
+      accent: "#f59e0b",
+      tone: "warning"
+    });
+  }
+
+  if (awaitingReconciliation.length) {
+    notices.push({
+      id: "reconciliation",
+      eyebrow: "Follow-through",
+      title: `${awaitingReconciliation.length} item${awaitingReconciliation.length === 1 ? "" : "s"} await reconciliation`,
+      body: "Payments and expenses are still open until reconciliation is finished.",
+      accent: "#38bdf8",
+      tone: "info"
+    });
+  }
+
+  if (!notices.length && (pendingDecision.length || awaitingPayment.length)) {
+    notices.push({
+      id: "queue-steady",
+      eyebrow: "Queue status",
+      title: `${pendingDecision.length + awaitingPayment.length} finance item${pendingDecision.length + awaitingPayment.length === 1 ? "" : "s"} are in motion`,
+      body: "The queue is active, but there are no overdue or reconciliation risks at the moment.",
+      accent: "#10b981",
+      tone: "success"
+    });
+  }
+
+  return {
+    pendingDecision,
+    overdueInvoices,
+    dueSoonInvoices,
+    awaitingPayment,
+    awaitingReconciliation,
+    notices
+  };
+}
+
+function FinanceQueueSummary({ summary, compact = false }) {
+  const stats = [
+    {
+      id: "pending",
+      label: "Needs review",
+      value: summary.pendingDecision.length,
+      accent: "#f59e0b"
+    },
+    {
+      id: "overdue",
+      label: "Overdue",
+      value: summary.overdueInvoices.length,
+      accent: "#ef4444"
+    },
+    {
+      id: "payment",
+      label: "Awaiting payment",
+      value: summary.awaitingPayment.length,
+      accent: "#22c55e"
+    },
+    {
+      id: "reconciliation",
+      label: "Awaiting reconciliation",
+      value: summary.awaitingReconciliation.length,
+      accent: "#38bdf8"
+    }
+  ];
+
+  return (
+    <div
+      className="finance-record-digest rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(16,185,129,0.16)",
+        background: "linear-gradient(135deg, rgba(16,185,129,0.08), rgba(15,23,42,0.78))",
+        boxShadow: "0 16px 42px rgba(0,0,0,0.22)"
+      }}
+    >
+      <div className={`flex flex-wrap items-start justify-between gap-4 ${compact ? "mb-4" : "mb-5"}`}>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">FinanceBot priorities</div>
+          <h3
+            style={{
+              marginTop: 8,
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+              fontSize: compact ? 22 : 24,
+              lineHeight: 1.15,
+              fontWeight: 700,
+              color: "#f8fafc"
+            }}
+          >
+            What needs attention now
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            Live queue guidance from the current finance records. These notices update as invoice and expense states change.
+          </p>
+        </div>
+      </div>
+
+      <div className={`grid gap-3 ${compact ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-2 xl:grid-cols-4"}`}>
+        {stats.map((stat) => (
+          <div
+            key={stat.id}
+            className="rounded-[18px] px-4 py-3"
+            style={{
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.04)"
+            }}
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: stat.accent }}>
+              {stat.label}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+                fontSize: 28,
+                lineHeight: 1,
+                fontWeight: 800,
+                color: "#f8fafc"
+              }}
+            >
+              {stat.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className={`mt-4 grid gap-3 ${compact ? "lg:grid-cols-1" : "lg:grid-cols-3"}`}>
+        {summary.notices.map((notice) => (
+          <div
+            key={notice.id}
+            className="rounded-[18px] px-4 py-4"
+            style={{
+              border: `1px solid ${notice.accent}33`,
+              background: `${notice.accent}10`
+            }}
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: notice.accent }}>
+              {notice.eyebrow}
+            </div>
+            <div className="mt-2 text-base font-semibold text-slate-50">{notice.title}</div>
+            <div className="mt-2 text-sm leading-6 text-slate-300">{notice.body}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function FinanceRelationshipSummary({ customers = [], vendors = [] }) {
+  const topCustomers = customers.slice(0, 3);
+  const topVendors = vendors.slice(0, 3);
+
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Relationship pulse</div>
+      <h3 className="mt-2 text-xl font-bold text-white">Active finance contacts</h3>
+      <p className="mt-2 text-sm text-slate-400">Quick visibility into the customer and vendor records this workspace is using most recently.</p>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Customers</div>
+          <div className="mt-3 space-y-3">
+            {topCustomers.length ? topCustomers.map((customer) => (
+              <div key={customer.id} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                <div className="text-sm font-semibold text-slate-100">{customer.name}</div>
+                <div className="mt-1 text-xs text-slate-400">{customer.email || "No email saved"}</div>
+              </div>
+            )) : <div className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3 text-sm text-slate-400">No customer records yet.</div>}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Vendors</div>
+          <div className="mt-3 space-y-3">
+            {topVendors.length ? topVendors.map((vendor) => (
+              <div key={vendor.id} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                <div className="text-sm font-semibold text-slate-100">{vendor.name}</div>
+                <div className="mt-1 text-xs text-slate-400">{vendor.email || "No email saved"}</div>
+              </div>
+            )) : <div className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3 text-sm text-slate-400">No vendor records yet.</div>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceFilterToolbar({
+  customerOptions = [],
+  vendorOptions = [],
+  invoiceFilter,
+  expenseFilter,
+  reportingWindow = "all",
+  onInvoiceFilterChange,
+  onExpenseFilterChange,
+  onReportingWindowChange
+}) {
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Finance filters</div>
+      <h3 className="mt-2 text-xl font-bold text-white">Narrow the queue by contact or status</h3>
+      <p className="mt-2 text-sm text-slate-400">Use lightweight filters to review invoice and expense work without leaving the current finance workspace.</p>
+
+      <div className="mt-4 max-w-[240px]">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Reporting window</span>
+          <select value={reportingWindow} onChange={(event) => onReportingWindowChange?.(event.target.value)} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+            <option value="all">All time</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 90 days</option>
+          </select>
+        </label>
+      </div>
+
+      <div className="mt-5 grid gap-6 xl:grid-cols-2">
+        <div className="grid gap-3 rounded-[20px] border border-white/8 bg-white/4 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Invoices</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Customer</span>
+              <select value={invoiceFilter.customerId} onChange={(event) => onInvoiceFilterChange("customerId", event.target.value)} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+                <option value="">All customers</option>
+                {customerOptions.map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+              <select value={invoiceFilter.status} onChange={(event) => onInvoiceFilterChange("status", event.target.value)} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="partial">Partial</option>
+                <option value="paid">Paid</option>
+                <option value="overdue">Overdue</option>
+                <option value="reconciled">Reconciled</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="grid gap-3 rounded-[20px] border border-white/8 bg-white/4 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Expenses</div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Vendor</span>
+              <select value={expenseFilter.vendorId} onChange={(event) => onExpenseFilterChange("vendorId", event.target.value)} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+                <option value="">All vendors</option>
+                {vendorOptions.map((vendor) => (
+                  <option key={vendor.id} value={vendor.id}>{vendor.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+              <select value={expenseFilter.status} onChange={(event) => onExpenseFilterChange("status", event.target.value)} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+                <option value="">All statuses</option>
+                <option value="draft">Draft</option>
+                <option value="pending_review">Pending review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+                <option value="reimbursed">Reimbursed</option>
+                <option value="reconciled">Reconciled</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceRecordDigest({
+  title,
+  subtitle,
+  items = [],
+  kind = "invoice",
+  onSelectItem = null,
+  selectedItemId = ""
+}) {
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">{kind}</div>
+          <h3 className="mt-2 text-xl font-bold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-slate-400">{subtitle}</p>
+        </div>
+        <div className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+          {items.length} item{items.length === 1 ? "" : "s"}
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {items.length ? items.map((item) => {
+          const isSelected = selectedItemId === item.id;
+          const Tag = onSelectItem ? "button" : "div";
+          return (
+          <Tag
+            key={item.id}
+            type={onSelectItem ? "button" : undefined}
+            onClick={onSelectItem ? () => onSelectItem(item) : undefined}
+            className={`w-full rounded-[18px] border px-4 py-4 text-left ${isSelected ? "border-emerald-400/30 bg-emerald-500/10" : "border-white/8 bg-white/5"} ${onSelectItem ? "transition hover:border-white/15 hover:bg-white/[0.08]" : ""}`}
+          >
+            {kind === "invoice" ? (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{item.metadata.invoiceNumber}</div>
+                    <div className="mt-1 text-xs text-slate-400">{item.metadata.companyName}</div>
+                  </div>
+                  <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                    {item.metadata.status}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {item.metadata.recurring?.enabled && !item.metadata.recurringSourceInvoiceId ? (
+                    <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                      Template
+                    </span>
+                  ) : null}
+                  {item.metadata.recurringSourceInvoiceId ? (
+                    <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+                      Generated run #{item.metadata.recurringSequence || 1}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                  <span>{formatMoney(item.metadata.amount, item.metadata.currency)}</span>
+                  <span>Remaining {formatMoney(item.metadata.outstandingAmount || 0, item.metadata.currency)}</span>
+                  <span>Due {formatDate(item.metadata.dueDate)}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{item.metadata.vendorName || "Vendor"}</div>
+                    <div className="mt-1 text-xs text-slate-400 capitalize">{item.metadata.category}</div>
+                  </div>
+                  <span className="rounded-full border border-white/8 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+                    {item.metadata.status}
+                  </span>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                  <span>{formatMoney(item.metadata.amount, item.metadata.currency)}</span>
+                  <span>{formatDate(item.createdAt)}</span>
+                </div>
+              </>
+            )}
+          </Tag>
+        );
+        }) : (
+          <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+            No matching {kind === "invoice" ? "invoices" : "expenses"} right now.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FinanceOperationalInsights({
+  recurringDueInvoices = [],
+  partialPaymentInvoices = [],
+  topCustomers = [],
+  topVendors = [],
+  canIssueRecurring = false,
+  issuingInvoiceId = null,
+  onIssueRecurring = null
+}) {
+  const sections = [
+    {
+      id: "recurring-due",
+      title: "Recurring invoices due",
+      description: "Manually issue the next invoice from recurring templates when the next issue date arrives.",
+      items: recurringDueInvoices,
+      empty: "No recurring invoices are due right now."
+    },
+    {
+      id: "partial-history",
+      title: "Partial payment history",
+      description: "Invoices with payment history that still carry an open balance.",
+      items: partialPaymentInvoices,
+      empty: "No partial payment history needs review right now."
+    },
+    {
+      id: "customer-balance",
+      title: "Customers with open balances",
+      description: "Customers currently carrying the highest outstanding invoice balance.",
+      items: topCustomers,
+      empty: "No customers currently owe money."
+    },
+    {
+      id: "vendor-usage",
+      title: "Most used vendors",
+      description: "Vendors appearing most often in the expense flow.",
+      items: topVendors,
+      empty: "No vendor usage is available yet."
+    }
+  ];
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-2">
+      {sections.map((section) => (
+        <div
+          key={section.id}
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">{section.id.replace("-", " ")}</div>
+          <h3 className="mt-2 text-xl font-bold text-white">{section.title}</h3>
+          <p className="mt-2 text-sm text-slate-400">{section.description}</p>
+
+          <div className="mt-5 space-y-3">
+            {section.items.length ? section.items.map((item) => {
+              if (section.id === "recurring-due") {
+                return (
+                  <div key={item.id} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">{item.invoiceNumber}</div>
+                        <div className="mt-1 text-xs text-slate-400">{item.companyName}</div>
+                        <div className="mt-2 text-xs text-amber-200">Due to issue {formatDate(item.recurring?.nextIssueDate)}</div>
+                      </div>
+                      {canIssueRecurring ? (
+                        <button
+                          type="button"
+                          onClick={() => onIssueRecurring?.(item)}
+                          disabled={issuingInvoiceId === item.id}
+                          className="rounded-[12px] border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300 disabled:opacity-60"
+                        >
+                          {issuingInvoiceId === item.id ? "Issuing..." : "Issue next"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (section.id === "partial-history") {
+                return (
+                  <div key={item.id} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-100">{item.invoiceNumber}</div>
+                        <div className="mt-1 text-xs text-slate-400">{item.companyName}</div>
+                      </div>
+                      <div className="text-right text-xs text-slate-400">
+                        <div>{item.payments.length} payment{item.payments.length === 1 ? "" : "s"}</div>
+                        <div className="mt-1 text-amber-200">{formatMoney(item.outstandingAmount || 0, item.currency)} open</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {item.payments.slice(-3).reverse().map((payment, index) => (
+                        <div key={`${item.id}-payment-${payment.id || index}`} className="flex items-center justify-between gap-3 rounded-[14px] border border-white/8 bg-white/5 px-3 py-2 text-xs text-slate-300">
+                          <div>
+                            <div>{formatMoney(payment.amount, item.currency)}</div>
+                            <div className="mt-1 text-slate-500">{formatDateTime(payment.recordedAt)}</div>
+                            <div className="mt-1 text-slate-500">
+                              {formatPaymentMethod(payment.method)}
+                              {payment.reference ? ` · ${payment.reference}` : ""}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div>{payment.recordedBy?.name || "Finance staff"}</div>
+                            <div className="mt-1 text-slate-500">{formatMoney(payment.remainingBalance || 0, item.currency)} left</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+
+              if (section.id === "customer-balance") {
+                return (
+                  <div key={item.name} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                    <div className="text-sm font-semibold text-slate-100">{item.name}</div>
+                    <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                      <span>{item.invoiceCount} invoice{item.invoiceCount === 1 ? "" : "s"} open</span>
+                      <span className="text-amber-200">{formatMoneyDisplay((item.outstandingAmountByCurrency ?? item.outstandingAmount) || 0)}</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div key={item.name} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="text-sm font-semibold text-slate-100">{item.name}</div>
+                  <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                    <span>{item.expenseCount} expense{item.expenseCount === 1 ? "" : "s"}</span>
+                    <span className="text-sky-300">{formatMoneyDisplay((item.totalAmountByCurrency ?? item.totalAmount) || 0)}</span>
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                {section.empty}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanceReportingSnapshot({
+  statusBreakdown = {},
+  recurringSummary = {},
+  recentPayments = [],
+  recurringTemplates = []
+}) {
+  const breakdownItems = [
+    ["pending", "Pending"],
+    ["approved", "Approved"],
+    ["partial", "Partial"],
+    ["paid", "Paid"],
+    ["overdue", "Overdue"],
+    ["reconciled", "Reconciled"],
+    ["rejected", "Rejected"]
+  ];
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div
+        className="rounded-[24px] p-5"
+        style={{
+          border: "1px solid rgba(255,255,255,0.08)",
+          background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+        }}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Reporting snapshot</div>
+        <h3 className="mt-2 text-xl font-bold text-white">Invoice status breakdown</h3>
+        <p className="mt-2 text-sm text-slate-400">A quick read on how invoices are moving through review, payment, and reconciliation.</p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {breakdownItems.map(([id, label]) => (
+            <div key={id} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</div>
+              <div className="mt-3 text-2xl font-bold text-slate-100">{statusBreakdown[id] || 0}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-6">
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Recurring lifecycle</div>
+          <h3 className="mt-2 text-xl font-bold text-white">Template vs generated activity</h3>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Templates", recurringSummary.templates || 0],
+              ["Generated", recurringSummary.generated || 0],
+              ["Due now", recurringSummary.due || 0]
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</div>
+                <div className="mt-3 text-2xl font-bold text-slate-100">{value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Template history</div>
+          <h3 className="mt-2 text-xl font-bold text-white">Recurring usage by template</h3>
+          <div className="mt-5 space-y-3">
+            {recurringTemplates.length ? recurringTemplates.map((template) => (
+              <div key={template.id} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-sm font-semibold text-slate-100">{template.invoiceNumber}</div>
+                      {template.dueNow ? (
+                        <span className="rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                          Due now
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">{template.customerName}</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      Next issue {template.nextIssueDate ? formatDate(template.nextIssueDate) : "not scheduled"}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      {formatPaymentMethod(template.frequency)}
+                      {template.interval > 1 ? ` every ${template.interval} cycles` : " schedule"} · {formatMoney(template.amount, template.currency)}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-slate-100">{template.generatedCount} generated</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {template.lastIssuedAt ? `Last issued ${formatDateTime(template.lastIssuedAt)}` : "No generated runs yet"}
+                    </div>
+                  </div>
+                </div>
+                {template.latestRun ? (
+                  <div className="mt-3 rounded-[14px] border border-white/8 bg-white/5 px-3 py-3 text-xs text-slate-300">
+                    <div className="font-semibold text-slate-100">Latest generated invoice</div>
+                    <div className="mt-2 flex items-start justify-between gap-3">
+                      <div>
+                        <div>{template.latestRun.invoiceNumber}</div>
+                        <div className="mt-1 text-slate-500">
+                          Run #{template.latestRun.recurringSequence || 1} · {formatDateTime(template.latestRun.createdAt || template.latestRun.dueDate)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div>{formatMoney(template.latestRun.amount, template.latestRun.currency)}</div>
+                        <div className="mt-1 text-slate-500">{template.latestRun.statusLabel}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                {template.generatedRuns.length ? (
+                  <div className="mt-3 space-y-2">
+                    {template.generatedRuns.map((run) => (
+                      <div key={run.id} className="rounded-[14px] border border-white/8 bg-white/5 px-3 py-3 text-xs text-slate-300">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-semibold text-slate-100">{run.invoiceNumber}</div>
+                            <div className="mt-1 text-slate-500">
+                              Run #{run.recurringSequence || 1} · {formatDateTime(run.createdAt || run.dueDate)}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold text-slate-100">{formatMoney(run.amount, run.currency)}</div>
+                            <div className="mt-1 text-slate-500">{run.statusLabel}</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            )) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                No recurring template history is available in this reporting view yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Recent payment activity</div>
+          <h3 className="mt-2 text-xl font-bold text-white">Latest recorded payments</h3>
+          <div className="mt-5 space-y-3">
+            {recentPayments.length ? recentPayments.map((payment, index) => (
+              <div key={payment.id || `${payment.invoiceId}-${index}`} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{payment.invoiceNumber}</div>
+                    <div className="mt-1 text-xs text-slate-400">{payment.customerName}</div>
+                    <div className="mt-2 text-xs text-slate-500">{formatDateTime(payment.recordedAt)}</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      {formatPaymentMethod(payment.method)}
+                      {payment.reference ? ` · Ref ${payment.reference}` : ""}
+                    </div>
+                    {payment.note ? <div className="mt-2 text-xs text-slate-500">{payment.note}</div> : null}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-emerald-300">{formatMoney(payment.amount, payment.currency)}</div>
+                    <div className="mt-1 text-xs text-slate-500">{formatMoney(payment.remainingBalance || 0, payment.currency)} left</div>
+                    {payment.recordedBy?.name ? <div className="mt-1 text-xs text-slate-500">{payment.recordedBy.name}</div> : null}
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                No payments recorded in this reporting window yet.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceCurrencyBreakdown({ bucket = {}, muted = false }) {
+  const entries = bucketEntries(bucket);
+  if (!entries.length) {
+    return <span className={muted ? "text-slate-500" : "text-slate-300"}>{formatMoney(0)}</span>;
+  }
+
+  return (
+    <div className="space-y-1">
+      {entries.map(([currency, amount]) => (
+        <div key={`bucket-${currency}`} className={`text-xs ${muted ? "text-slate-500" : "text-slate-300"}`}>
+          {formatMoney(amount, currency)} {currency}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function FinanceActionLogList({ actions = [], emptyLabel = "No recent actions yet." }) {
+  return (
+    <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Recent actions</div>
+      <div className="mt-3 space-y-3">
+        {actions.length ? actions.map((action, index) => (
+          <div key={`${action.id || action.createdAt || index}-finance-action`} className="rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-100">
+                  {String(action.action || "updated").replace(/_/g, " ")}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {action.actorName || action.actor?.name || "Finance workspace"}
+                </div>
+                {action.note ? <div className="mt-2 text-xs text-slate-400">{action.note}</div> : null}
+              </div>
+              <div className="text-right text-xs text-slate-500">
+                {formatTimeAgo(action.createdAt)}
+              </div>
+            </div>
+          </div>
+        )) : (
+          <div className="text-sm text-slate-400">{emptyLabel}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FinanceBalanceSheetPanel({
+  workspaceDefaultCurrency = "USD",
+  financeBalanceSheetReport = null,
+  onLoadFinanceBalanceSheetReport = null
+}) {
+  const [asOfDate, setAsOfDate] = useState(todayDateInputValue());
+  const [loading, setLoading] = useState(false);
+  const normalizedBaseCurrency = workspaceDefaultCurrency || "USD";
+
+  async function refreshBalanceSheet() {
+    if (!onLoadFinanceBalanceSheetReport) {
+      return;
+    }
+    setLoading(true);
+    try {
+      await onLoadFinanceBalanceSheetReport({
+        asOfDate,
+        baseCurrency: normalizedBaseCurrency
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const sections = [
+    ["Assets", financeBalanceSheetReport?.assets || {}],
+    ["Liabilities", financeBalanceSheetReport?.liabilities || {}],
+    ["Equity", financeBalanceSheetReport?.equity || {}]
+  ];
+
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Balance sheet</div>
+          <h3 className="mt-2 text-xl font-bold text-white">Assets, liabilities, and equity</h3>
+          <p className="mt-2 text-sm text-slate-400">Point-in-time position in raw currencies and approx. normalized totals.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            downloadCsvFile("finance-balance-sheet.csv", [
+              ["Section", "Line", "Currency", "Amount"],
+              ...sections.flatMap(([sectionLabel, sectionData]) =>
+                Object.entries(sectionData)
+                  .filter(([key]) => key !== "total")
+                  .flatMap(([key, bucket]) =>
+                    bucketEntries(bucket || {}).map(([currency, amount]) => [sectionLabel, key, currency, amount])
+                  )
+              )
+            ])
+          }
+          className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+        >
+          Export CSV
+        </button>
+      </div>
+      <div className="mt-4 flex flex-wrap items-end gap-3">
+        <label className="block">
+          <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">As of date</span>
+          <input
+            type="date"
+            value={asOfDate}
+            onChange={(event) => setAsOfDate(event.target.value)}
+            className="mt-2 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={refreshBalanceSheet}
+          className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+        >
+          {loading ? "Refreshing..." : "Refresh balance sheet"}
+        </button>
+      </div>
+      <div className="mt-5 grid gap-4 xl:grid-cols-3">
+        {sections.map(([sectionLabel, sectionData]) => (
+          <div key={sectionLabel} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{sectionLabel}</div>
+            <div className="mt-2 text-sm font-semibold text-emerald-300">
+              approx. {formatMoney(financeBalanceSheetReport?.normalizedTotals?.[sectionLabel.toLowerCase()] || 0, normalizedBaseCurrency)}
+            </div>
+            <div className="mt-3 space-y-3">
+              {Object.entries(sectionData || {})
+                .filter(([key]) => key !== "total")
+                .map(([key, bucket]) => (
+                  <div key={`${sectionLabel}-${key}`}>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{key.replace(/([A-Z])/g, " $1").trim()}</div>
+                    <div className="mt-1"><FinanceCurrencyBreakdown bucket={bucket || {}} /></div>
+                  </div>
+                ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total assets</div>
+          <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeBalanceSheetReport?.assets?.total || {}} /></div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total liabilities</div>
+          <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeBalanceSheetReport?.liabilities?.total || {}} /></div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total equity</div>
+          <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeBalanceSheetReport?.equity?.total || {}} /></div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Balance check</div>
+          <div className={`mt-2 text-sm font-semibold ${financeBalanceSheetReport?.balanceCheck?.isBalanced ? "text-emerald-300" : "text-amber-200"}`}>
+            {financeBalanceSheetReport?.balanceCheck?.isBalanced ? "Balanced" : "Approx. mismatch"}
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            Diff {formatMoney(financeBalanceSheetReport?.balanceCheck?.difference || 0, normalizedBaseCurrency)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceDetailPanels.jsx -----
+function FinanceInvoiceDetailPanel({
+  detail = null,
+  message = null,
+  canApprove = false,
+  canMarkPaid = false,
+  canReconcile = false,
+  downloadingPdf = false,
+  onBack = null,
+  onApprove = null,
+  onReject = null,
+  onRecordPayment = null,
+  onReconcile = null,
+  onDownloadPdf = null
+}) {
+  const record = detail || { ...(message?.metadata || {}) };
+  const actionLog = Array.isArray(detail?.actionLog) ? detail.actionLog : [];
+  const payments = Array.isArray(record.payments) ? record.payments : [];
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+  const [paymentDraft, setPaymentDraft] = useState({
+    amount: String(record.outstandingAmount || record.amount || ""),
+    method: "bank_transfer",
+    reference: "",
+    note: ""
+  });
+
+  useEffect(() => {
+    setRejectionReason("");
+    setShowReject(false);
+    setShowPayment(false);
+    setPaymentDraft({
+      amount: String(record.outstandingAmount || record.amount || ""),
+      method: "bank_transfer",
+      reference: "",
+      note: ""
+    });
+  }, [record.id, record.outstandingAmount, record.amount]);
+
+  const messageLike = message || { metadata: record };
+
+  return (
+    <div className="finance-record-detail-panel rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <button type="button" onClick={onBack} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+            Back to invoices
+          </button>
+          <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-400">{record.invoiceNumber || "Invoice detail"}</div>
+          <h3 className="mt-2 text-2xl font-bold text-white">{record.customer?.name || record.customerName || record.companyName || "Customer"}</h3>
+          <div className="mt-2 text-sm text-slate-400">{record.customer?.email || "No customer email saved"}</div>
+        </div>
+        <div className="text-right">
+          <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-200">{record.status || "pending_review"}</div>
+          <div className="mt-3 text-3xl font-bold text-emerald-300">{formatMoney(record.amount || 0, record.currency || "USD")}</div>
+          <div className="mt-1 text-xs text-slate-500">Due {record.dueDate ? formatDate(record.dueDate) : "Not set"}</div>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Subtotal</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.subtotal || record.amount || 0, record.currency || "USD")}</div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{record.taxLabel || "Tax"}</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.taxAmount || 0, record.currency || "USD")}</div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total with tax</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.totalWithTax || record.amount || 0, record.currency || "USD")}</div>
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        {["pending_review", "pending"].includes(record.status) && canApprove ? (
+          <button type="button" onClick={() => onApprove?.(messageLike)} className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300">
+            Approve
+          </button>
+        ) : null}
+        {["pending_review", "pending", "approved"].includes(record.status) ? (
+          <button type="button" onClick={() => setShowReject((current) => !current)} className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300">
+            {showReject ? "Hide reject" : "Reject"}
+          </button>
+        ) : null}
+        {["approved", "partial", "overdue"].includes(record.status) && canMarkPaid ? (
+          <button type="button" onClick={() => setShowPayment((current) => !current)} className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300">
+            {showPayment ? "Hide payment" : "Record payment"}
+          </button>
+        ) : null}
+        {["approved", "partial", "paid", "overdue"].includes(record.status) && canReconcile ? (
+          <button type="button" onClick={() => onReconcile?.(messageLike)} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200">
+            Reconcile
+          </button>
+        ) : null}
+        {record.invoiceId || record.id ? (
+          <button type="button" onClick={() => onDownloadPdf?.(messageLike)} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200">
+            {downloadingPdf ? "Generating PDF..." : "Download PDF"}
+          </button>
+        ) : null}
+      </div>
+      {showReject ? (
+        <div className="mt-4 rounded-[18px] border border-rose-400/15 bg-rose-500/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-300">Reject invoice</div>
+          <textarea
+            rows={3}
+            value={rejectionReason}
+            onChange={(event) => setRejectionReason(event.target.value)}
+            placeholder="Add a rejection reason"
+            className="mt-3 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+          />
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onReject?.({ ...messageLike, metadata: { ...messageLike.metadata, rejectReason: rejectionReason } })}
+              className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300"
+            >
+              Confirm reject
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showPayment ? (
+        <div className="mt-4 rounded-[18px] border border-sky-400/15 bg-sky-500/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300">Record payment</div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <input type="number" step="0.01" value={paymentDraft.amount} onChange={(event) => setPaymentDraft((current) => ({ ...current, amount: event.target.value }))} className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <select value={paymentDraft.method} onChange={(event) => setPaymentDraft((current) => ({ ...current, method: event.target.value }))} className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none">
+              <option value="bank_transfer">Bank transfer</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="check">Check</option>
+            </select>
+            <input value={paymentDraft.reference} onChange={(event) => setPaymentDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="Reference" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <input value={paymentDraft.note} onChange={(event) => setPaymentDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onRecordPayment?.(messageLike, paymentDraft)}
+              className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300"
+            >
+              Save payment
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+        <div className="space-y-5">
+          {record.note ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Note</div>
+              <div className="mt-2 text-sm text-slate-300">{record.note}</div>
+            </div>
+          ) : null}
+          <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Payment history</div>
+            <div className="mt-3 space-y-3">
+              {payments.length ? payments.map((payment, index) => (
+                <div key={`${payment.id || payment.recordedAt || index}-payment`} className="rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-100">{formatMoney(payment.amount || 0, record.currency || "USD")}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatDateTime(payment.recordedAt || payment.createdAt)}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatPaymentMethod(payment.method)}{payment.reference ? ` · ${payment.reference}` : ""}</div>
+                    </div>
+                    <div className="text-right text-xs text-slate-500">
+                      {payment.remainingBalance !== undefined ? `Remaining ${formatMoney(payment.remainingBalance || 0, record.currency || "USD")}` : ""}
+                    </div>
+                  </div>
+                  {payment.note ? <div className="mt-2 text-xs text-slate-400">{payment.note}</div> : null}
+                </div>
+              )) : <div className="text-sm text-slate-400">No payments recorded yet.</div>}
+            </div>
+          </div>
+          {Array.isArray(record.attachments) && record.attachments.length ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Attachments</div>
+              <div className="mt-3 space-y-2">
+                {record.attachments.map((attachment, index) => (
+                  <a key={`${attachment.url || attachment.name || index}-attachment`} href={attachment.url} target="_blank" rel="noreferrer" className="block rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3 text-sm text-emerald-300">
+                    {attachment.name || `Attachment ${index + 1}`}
+                  </a>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="space-y-5">
+          {detail?.accountingEnabled && detail?.accountingJournalRefs ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Accounting refs</div>
+              <div className="mt-3 space-y-2 text-sm text-slate-300">
+                <div>Revenue entry: {detail.accountingJournalRefs.revenueEntryStatus || "unposted"}</div>
+                <div>Payment journals: {Number(detail.accountingJournalRefs.paymentPostedCount || 0)}</div>
+              </div>
+            </div>
+          ) : null}
+          <FinanceActionLogList actions={actionLog} emptyLabel="No invoice actions yet." />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FinanceExpenseDetailPanel({
+  detail = null,
+  message = null,
+  canApprove = false,
+  canEdit = false,
+  canReconcile = false,
+  onBack = null,
+  onApprove = null,
+  onReject = null,
+  onReimburse = null,
+  onReconcile = null
+}) {
+  const record = detail || { ...(message?.metadata || {}) };
+  const actionLog = Array.isArray(detail?.actionLog) ? detail.actionLog : [];
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [showReject, setShowReject] = useState(false);
+  const [showReimburse, setShowReimburse] = useState(false);
+  const [reimbursementDraft, setReimbursementDraft] = useState({
+    method: "",
+    reference: "",
+    note: ""
+  });
+
+  useEffect(() => {
+    setRejectionReason("");
+    setShowReject(false);
+    setShowReimburse(false);
+    setReimbursementDraft({ method: "", reference: "", note: "" });
+  }, [record.id]);
+
+  const messageLike = message || { metadata: record };
+
+  return (
+    <div className="finance-record-detail-panel rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <button type="button" onClick={onBack} className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
+            Back to expenses
+          </button>
+          <div className="mt-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300">Expense detail</div>
+          <h3 className="mt-2 text-2xl font-bold text-white">{record.vendor?.name || record.vendorName || "Vendor"}</h3>
+          <div className="mt-2 text-sm text-slate-400 capitalize">{record.category || "General"} · {record.expenseDate ? formatDate(record.expenseDate) : "No date"}</div>
+        </div>
+        <div className="text-right">
+          <div className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-200">{record.status || "pending_review"}</div>
+          <div className="mt-3 text-3xl font-bold text-sky-300">{formatMoney(record.amount || 0, record.currency || "USD")}</div>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Subtotal</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.amount || 0, record.currency || "USD")}</div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{record.taxLabel || "Tax"}</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.taxAmount || 0, record.currency || "USD")}</div>
+        </div>
+        <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total with tax</div>
+          <div className="mt-2 text-sm font-semibold text-slate-100">{formatMoney(record.totalWithTax || record.amount || 0, record.currency || "USD")}</div>
+        </div>
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        {record.status === "pending_review" && canApprove ? (
+          <button type="button" onClick={() => onApprove?.(messageLike)} className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300">
+            Approve
+          </button>
+        ) : null}
+        {["pending_review", "approved"].includes(record.status) ? (
+          <button type="button" onClick={() => setShowReject((current) => !current)} className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300">
+            {showReject ? "Hide reject" : "Reject"}
+          </button>
+        ) : null}
+        {record.status === "approved" && canEdit ? (
+          <button type="button" onClick={() => setShowReimburse((current) => !current)} className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300">
+            {showReimburse ? "Hide reimburse" : "Reimburse"}
+          </button>
+        ) : null}
+        {["approved", "reimbursed"].includes(record.status) && canReconcile ? (
+          <button type="button" onClick={() => onReconcile?.(messageLike)} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200">
+            Reconcile
+          </button>
+        ) : null}
+      </div>
+      {showReject ? (
+        <div className="mt-4 rounded-[18px] border border-rose-400/15 bg-rose-500/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-300">Reject expense</div>
+          <textarea
+            rows={3}
+            value={rejectionReason}
+            onChange={(event) => setRejectionReason(event.target.value)}
+            placeholder="Add a rejection reason"
+            className="mt-3 w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+          />
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => onReject?.({ ...messageLike, metadata: { ...messageLike.metadata, rejectReason: rejectionReason } })}
+              className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300"
+            >
+              Confirm reject
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {showReimburse ? (
+        <div className="mt-4 rounded-[18px] border border-sky-400/15 bg-sky-500/5 px-4 py-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300">Reimburse expense</div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <input value={reimbursementDraft.method} onChange={(event) => setReimbursementDraft((current) => ({ ...current, method: event.target.value }))} placeholder="Method" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <input value={reimbursementDraft.reference} onChange={(event) => setReimbursementDraft((current) => ({ ...current, reference: event.target.value }))} placeholder="Reference" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <input value={reimbursementDraft.note} onChange={(event) => setReimbursementDraft((current) => ({ ...current, note: event.target.value }))} placeholder="Note" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() =>
+                onReimburse?.({
+                  ...messageLike,
+                  metadata: {
+                    ...messageLike.metadata,
+                    reimbursementMethod: reimbursementDraft.method,
+                    reimbursementReference: reimbursementDraft.reference,
+                    reimbursementNote: reimbursementDraft.note
+                  }
+                })
+              }
+              className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300"
+            >
+              Confirm reimbursement
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+        <div className="space-y-5">
+          {record.note ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Note</div>
+              <div className="mt-2 text-sm text-slate-300">{record.note}</div>
+            </div>
+          ) : null}
+          {record.receipt?.url ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Receipt</div>
+              <a href={record.receipt.url} target="_blank" rel="noreferrer" className="mt-3 block rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3 text-sm text-sky-300">
+                {record.receipt.name || "Open receipt"}
+              </a>
+            </div>
+          ) : null}
+        </div>
+        <div className="space-y-5">
+          {detail?.accountingEnabled && detail?.accountingJournalRefs ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Accounting refs</div>
+              <div className="mt-3 space-y-2 text-sm text-slate-300">
+                <div>Expense entry: {detail.accountingJournalRefs.expenseEntryStatus || "unposted"}</div>
+                <div>Settlement entry: {detail.accountingJournalRefs.settlementEntryStatus || "unposted"}</div>
+              </div>
+            </div>
+          ) : null}
+          <FinanceActionLogList actions={actionLog} emptyLabel="No expense actions yet." />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceAdvancedReportsPanel.jsx -----
+function FinanceAdvancedReportsPanel({
+  workspaceDefaultCurrency = "USD",
+  financeSummary = null,
+  financeTaxSummary = null,
+  financeProfitLossReport = null,
+  financeCashFlowReport = null,
+  financeAgedReceivablesReport = null,
+  financeBalanceSheetReport = null,
+  onLoadFinanceTaxSummary = null,
+  onLoadFinanceProfitLossReport = null,
+  onLoadFinanceCashFlowReport = null,
+  onLoadFinanceAgedReceivablesReport = null,
+  onLoadFinanceBalanceSheetReport = null
+}) {
+  const [taxFilters, setTaxFilters] = useState({ startDate: "", endDate: "" });
+  const [cashFlowFilters, setCashFlowFilters] = useState({ startDate: "", endDate: "" });
+  const [agedFilters, setAgedFilters] = useState({ startDate: "", endDate: "" });
+  const [profitLossPeriod, setProfitLossPeriod] = useState(financeProfitLossReport?.period || "month");
+  const [loadingKey, setLoadingKey] = useState("");
+
+  useEffect(() => {
+    if (financeProfitLossReport?.period) {
+      setProfitLossPeriod(financeProfitLossReport.period);
+    }
+  }, [financeProfitLossReport?.period]);
+
+  const normalizedBaseCurrency = workspaceDefaultCurrency || "USD";
+
+  async function refreshReport(key, loader, options = {}) {
+    if (!loader) {
+      return;
+    }
+
+    setLoadingKey(key);
+    try {
+      await loader(options);
+    } finally {
+      setLoadingKey("");
+    }
+  }
+
+  const taxNetApproximate = Number(financeTaxSummary?.normalizedApproximate?.net || 0);
+  const taxNetTone = taxNetApproximate >= 0 ? "text-emerald-300" : "text-rose-300";
+
+  return (
+    <div className="finance-reports-panel mt-6 grid gap-6">
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Tax summary</div>
+              <h3 className="mt-2 text-xl font-bold text-white">Collected, paid, and net tax</h3>
+              <p className="mt-2 text-sm text-slate-400">Lightweight VAT/GST visibility without leaving Finance.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvFile("finance-tax-summary.csv", [
+                  ["Type", "Currency", "Amount"],
+                  ...bucketEntries(financeTaxSummary?.collected || {}).map(([currency, amount]) => ["Collected", currency, amount]),
+                  ...bucketEntries(financeTaxSummary?.paid || {}).map(([currency, amount]) => ["Paid", currency, amount]),
+                  ...bucketEntries(financeTaxSummary?.net || {}).map(([currency, amount]) => ["Net", currency, amount])
+                ])
+              }
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Start date</span>
+              <input
+                type="date"
+                value={taxFilters.startDate}
+                onChange={(event) => setTaxFilters((current) => ({ ...current, startDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">End date</span>
+              <input
+                type="date"
+                value={taxFilters.endDate}
+                onChange={(event) => setTaxFilters((current) => ({ ...current, endDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => refreshReport("tax", onLoadFinanceTaxSummary, { ...taxFilters, baseCurrency: normalizedBaseCurrency })}
+              className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+            >
+              {loadingKey === "tax" ? "Refreshing..." : "Refresh tax summary"}
+            </button>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Collected</div>
+              <div className="mt-2 text-sm font-semibold text-emerald-300">
+                approx. {formatMoney(financeTaxSummary?.normalizedApproximate?.collected || 0, normalizedBaseCurrency)}
+              </div>
+              <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeTaxSummary?.collected || {}} /></div>
+            </div>
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Paid</div>
+              <div className="mt-2 text-sm font-semibold text-sky-300">
+                approx. {formatMoney(financeTaxSummary?.normalizedApproximate?.paid || 0, normalizedBaseCurrency)}
+              </div>
+              <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeTaxSummary?.paid || {}} /></div>
+            </div>
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net position</div>
+              <div className={`mt-2 text-sm font-semibold ${taxNetTone}`}>
+                approx. {formatMoney(taxNetApproximate, normalizedBaseCurrency)}
+              </div>
+              <div className="mt-2"><FinanceCurrencyBreakdown bucket={financeTaxSummary?.net || {}} /></div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Profit and loss</div>
+              <h3 className="mt-2 text-xl font-bold text-white">Profitability over time</h3>
+              <p className="mt-2 text-sm text-slate-400">Revenue, approved expenses, and gross profit grouped by period.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvFile("finance-profit-loss.csv", [
+                  ["Period", "Kind", "Currency", "Amount"],
+                  ...(financeProfitLossReport?.rows || []).flatMap((row) => [
+                    ...bucketEntries(row.revenue || {}).map(([currency, amount]) => [row.periodKey, "Revenue", currency, amount]),
+                    ...bucketEntries(row.expenses || {}).map(([currency, amount]) => [row.periodKey, "Expenses", currency, amount]),
+                    ...bucketEntries(row.grossProfit || {}).map(([currency, amount]) => [row.periodKey, "Gross profit", currency, amount])
+                  ])
+                ])
+              }
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Period</span>
+              <select
+                value={profitLossPeriod}
+                onChange={(event) => setProfitLossPeriod(event.target.value)}
+                className="mt-2 rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              >
+                <option value="month">Month</option>
+                <option value="quarter">Quarter</option>
+                <option value="year">Year</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => refreshReport("profit-loss", onLoadFinanceProfitLossReport, { period: profitLossPeriod, baseCurrency: normalizedBaseCurrency })}
+              className="mt-6 rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+            >
+              {loadingKey === "profit-loss" ? "Refreshing..." : "Refresh P&L"}
+            </button>
+          </div>
+          <div className="mt-5 rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Approx. gross profit</div>
+            <div className="mt-2 text-lg font-semibold text-emerald-300">
+              {formatMoney(financeProfitLossReport?.normalizedTotals?.grossProfit || 0, normalizedBaseCurrency)}
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {(financeProfitLossReport?.rows || []).length ? (
+              financeProfitLossReport.rows.map((row) => (
+                <div key={`pl-${row.periodKey}`} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-100">{row.periodKey}</div>
+                    <div className="text-xs text-emerald-300">
+                      approx. {formatMoney(row.normalizedApproximateGrossProfit?.amount || 0, row.normalizedApproximateGrossProfit?.baseCurrency || normalizedBaseCurrency)}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Revenue</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.revenue || {}} /></div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Expenses</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.expenses || {}} /></div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Gross profit</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.grossProfit || {}} /></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                No profit and loss data is available yet.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Cash flow</div>
+              <h3 className="mt-2 text-xl font-bold text-white">Cash in vs cash out</h3>
+              <p className="mt-2 text-sm text-slate-400">Track incoming payments against reimbursed or reconciled expense outflows.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvFile("finance-cash-flow.csv", [
+                  ["Period", "Kind", "Currency", "Amount"],
+                  ...(financeCashFlowReport?.rows || []).flatMap((row) => [
+                    ...bucketEntries(row.cashIn || {}).map(([currency, amount]) => [row.periodKey, "Cash in", currency, amount]),
+                    ...bucketEntries(row.cashOut || {}).map(([currency, amount]) => [row.periodKey, "Cash out", currency, amount]),
+                    ...bucketEntries(row.netCashFlow || {}).map(([currency, amount]) => [row.periodKey, "Net cash flow", currency, amount])
+                  ])
+                ])
+              }
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Start date</span>
+              <input
+                type="date"
+                value={cashFlowFilters.startDate}
+                onChange={(event) => setCashFlowFilters((current) => ({ ...current, startDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">End date</span>
+              <input
+                type="date"
+                value={cashFlowFilters.endDate}
+                onChange={(event) => setCashFlowFilters((current) => ({ ...current, endDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => refreshReport("cash-flow", onLoadFinanceCashFlowReport, { period: "month", ...cashFlowFilters, baseCurrency: normalizedBaseCurrency })}
+              className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+            >
+              {loadingKey === "cash-flow" ? "Refreshing..." : "Refresh cash flow"}
+            </button>
+          </div>
+          <div className="mt-5 rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Approx. net cash flow</div>
+            <div className={`mt-2 text-lg font-semibold ${(Number(financeCashFlowReport?.normalizedTotals?.netCashFlow || 0) >= 0) ? "text-emerald-300" : "text-rose-300"}`}>
+              {formatMoney(financeCashFlowReport?.normalizedTotals?.netCashFlow || 0, normalizedBaseCurrency)}
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {(financeCashFlowReport?.rows || []).length ? (
+              financeCashFlowReport.rows.map((row) => (
+                <div key={`cf-${row.periodKey}`} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-100">{row.periodKey}</div>
+                    <div className="text-xs text-slate-400">
+                      approx. {formatMoney(row.normalizedApproximateNetCashFlow?.amount || 0, row.normalizedApproximateNetCashFlow?.baseCurrency || normalizedBaseCurrency)}
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Cash in</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.cashIn || {}} /></div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Cash out</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.cashOut || {}} /></div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Net</div>
+                      <div className="mt-2"><FinanceCurrencyBreakdown bucket={row.netCashFlow || {}} /></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                No cash flow data is available yet.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Aged receivables</div>
+              <h3 className="mt-2 text-xl font-bold text-white">Outstanding invoice aging</h3>
+              <p className="mt-2 text-sm text-slate-400">See open receivables grouped by age bucket and customer concentration.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadCsvFile("finance-aged-receivables.csv", [
+                  ["Customer", "Bucket", "Currency", "Amount"],
+                  ...(financeAgedReceivablesReport?.customers || []).flatMap((customer) =>
+                    Object.entries(customer.buckets || {}).flatMap(([bucketKey, bucket]) =>
+                      bucketEntries(bucket || {}).map(([currency, amount]) => [customer.name, bucketKey, currency, amount])
+                    )
+                  )
+                ])
+              }
+              className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+            >
+              Export CSV
+            </button>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Start date</span>
+              <input
+                type="date"
+                value={agedFilters.startDate}
+                onChange={(event) => setAgedFilters((current) => ({ ...current, startDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+            <label className="block">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">End date</span>
+              <input
+                type="date"
+                value={agedFilters.endDate}
+                onChange={(event) => setAgedFilters((current) => ({ ...current, endDate: event.target.value }))}
+                className="mt-2 w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 outline-none"
+              />
+            </label>
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => refreshReport("aged", onLoadFinanceAgedReceivablesReport, { ...agedFilters, baseCurrency: normalizedBaseCurrency })}
+              className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+            >
+              {loadingKey === "aged" ? "Refreshing..." : "Refresh aged receivables"}
+            </button>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            {Object.entries(financeAgedReceivablesReport?.buckets || {}).map(([bucketKey, bucket]) => (
+              <div key={`aged-${bucketKey}`} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{bucketKey.replace(/_/g, "-")} days</div>
+                <div className="mt-2 text-sm text-amber-200">
+                  approx. {formatMoney(financeAgedReceivablesReport?.normalizedTotals?.byBucket?.[bucketKey] || 0, normalizedBaseCurrency)}
+                </div>
+                <div className="mt-2"><FinanceCurrencyBreakdown bucket={bucket || {}} /></div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 space-y-3">
+            {(financeAgedReceivablesReport?.customers || []).slice(0, 6).map((customer) => (
+              <div key={`aged-customer-${customer.name}`} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-100">{customer.name}</div>
+                  <div className="text-xs text-amber-200">{formatMoneyDisplay(customer.totalOutstanding || {})}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <FinanceBalanceSheetPanel
+        workspaceDefaultCurrency={workspaceDefaultCurrency}
+        financeBalanceSheetReport={financeBalanceSheetReport}
+        onLoadFinanceBalanceSheetReport={onLoadFinanceBalanceSheetReport}
+      />
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceContactManagerPanel.jsx -----
+function FinanceContactManagerPanel({
+  title,
+  kind = "customer",
+  items = [],
+  accent = "#10b981",
+  saving = false,
+  canManage = false,
+  onSave
+}) {
+  const [draft, setDraft] = useState({
+    id: null,
+    name: "",
+    email: "",
+    phone: "",
+    contactName: "",
+    notes: "",
+    status: "active"
+  });
+
+  function resetDraft() {
+    setDraft({
+      id: null,
+      name: "",
+      email: "",
+      phone: "",
+      contactName: "",
+      notes: "",
+      status: "active"
+    });
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const saved = await onSave?.(draft);
+    if (saved) {
+      resetDraft();
+    }
+  }
+
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: accent }}>{kind}</div>
+          <h3 className="mt-2 text-xl font-bold text-white">{title}</h3>
+          <p className="mt-2 text-sm text-slate-400">Keep your finance contacts workspace-specific and ready to reuse while creating invoices or expenses.</p>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
+        <div className="space-y-3">
+          {items.length ? items.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setDraft({
+                id: item.id,
+                name: item.name || "",
+                email: item.email || "",
+                phone: item.phone || "",
+                contactName: item.contactName || "",
+                notes: item.notes || "",
+                status: item.status || "active"
+              })}
+              className="w-full rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-left transition hover:bg-white/8"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-100">{item.name}</div>
+                  <div className="mt-1 text-xs text-slate-400">{item.email || "No email saved"}</div>
+                  {item.contactName ? <div className="mt-1 text-xs text-slate-500">Contact: {item.contactName}</div> : null}
+                </div>
+                <span
+                  className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                  style={{
+                    borderColor: item.status === "inactive" ? "rgba(148,163,184,0.22)" : `${accent}33`,
+                    background: item.status === "inactive" ? "rgba(148,163,184,0.12)" : `${accent}18`,
+                    color: item.status === "inactive" ? "#94a3b8" : accent
+                  }}
+                >
+                  {item.status || "active"}
+                </span>
+              </div>
+            </button>
+          )) : (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+              No {kind} records yet.
+            </div>
+          )}
+        </div>
+
+        <form onSubmit={handleSubmit} className="grid gap-3 rounded-[20px] border border-white/8 bg-white/4 p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            {draft.id ? `Edit ${kind}` : `Add ${kind}`}
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Name</span>
+            <input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none" />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Email</span>
+            <input type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none" />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Phone</span>
+              <input value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none" />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Contact Name</span>
+              <input value={draft.contactName} onChange={(event) => setDraft((current) => ({ ...current, contactName: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none" />
+            </label>
+          </div>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+            <select value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none">
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Notes</span>
+            <textarea rows={3} value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} className="w-full rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-slate-100 outline-none" />
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            {draft.id ? (
+              <button type="button" onClick={resetDraft} className="h-10 rounded-[12px] border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-300">
+                Cancel
+              </button>
+            ) : null}
+            <button
+              type="submit"
+              disabled={!canManage || saving}
+              className="h-10 rounded-[12px] px-5 text-sm font-semibold text-white disabled:opacity-60"
+              style={{ background: `linear-gradient(135deg,${accent},${accent})`, boxShadow: `0 14px 28px ${accent}33` }}
+            >
+              {saving ? "Saving..." : draft.id ? `Save ${kind}` : `Add ${kind}`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinancePayrollPanel.jsx -----
+function FinancePayrollPanel({
+  workspaceDefaultCurrency = "USD",
+  payrollRecords = [],
+  canManage = false,
+  onCreatePayrollRecord = null,
+  onApprovePayrollRecord = null,
+  onPayPayrollRecord = null,
+  onCancelPayrollRecord = null
+}) {
+  const [draft, setDraft] = useState({
+    employeeName: "",
+    employeeId: "",
+    payPeriodStart: todayDateInputValue(),
+    payPeriodEnd: todayDateInputValue(),
+    grossAmount: "",
+    currency: workspaceDefaultCurrency || "USD",
+    deductions: [{ label: "Tax", amount: "" }],
+    notes: ""
+  });
+  const [paymentDrafts, setPaymentDrafts] = useState({});
+  const [submittingKey, setSubmittingKey] = useState("");
+
+  useEffect(() => {
+    setDraft((current) => ({
+      ...current,
+      currency: current.currency || workspaceDefaultCurrency || "USD"
+    }));
+  }, [workspaceDefaultCurrency]);
+
+  const normalizedDeductions = draft.deductions
+    .map((entry) => ({
+      label: String(entry.label || "").trim(),
+      amount: Number(entry.amount || 0)
+    }))
+    .filter((entry) => entry.label && Number.isFinite(entry.amount) && entry.amount >= 0);
+  const netAmount = roundMoney(Math.max(0, Number(draft.grossAmount || 0) - normalizedDeductions.reduce((sum, entry) => sum + entry.amount, 0)));
+
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
+      <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Payroll</div>
+        <h3 className="mt-2 text-xl font-bold text-white">Employee pay runs</h3>
+        <div className="mt-4 space-y-3">
+          {payrollRecords.length ? payrollRecords.map((record) => (
+            <div key={record.id} className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">{record.employeeName}</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {formatDate(record.payPeriodStart)} to {formatDate(record.payPeriodEnd)}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-200">
+                      {record.status}
+                    </span>
+                    {record.linkedExpense ? (
+                      <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold text-emerald-200">
+                        Expense {formatMoney(record.linkedExpense.amount || 0, record.linkedExpense.currency || record.currency)}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-emerald-300">{formatMoney(record.netAmount || 0, record.currency || workspaceDefaultCurrency)}</div>
+                  <div className="mt-1 text-xs text-slate-500">Gross {formatMoney(record.grossAmount || 0, record.currency || workspaceDefaultCurrency)}</div>
+                </div>
+              </div>
+              {canManage ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {record.status === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSubmittingKey(`approve-${record.id}`);
+                        try {
+                          await onApprovePayrollRecord?.(record.id);
+                        } finally {
+                          setSubmittingKey("");
+                        }
+                      }}
+                      className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200"
+                    >
+                      {submittingKey === `approve-${record.id}` ? "Approving..." : "Approve"}
+                    </button>
+                  ) : null}
+                  {record.status === "approved" ? (
+                    <>
+                      <input
+                        value={paymentDrafts[record.id]?.paymentMethod || ""}
+                        onChange={(event) => setPaymentDrafts((current) => ({
+                          ...current,
+                          [record.id]: {
+                            ...current[record.id],
+                            paymentMethod: event.target.value
+                          }
+                        }))}
+                        placeholder="Payment method"
+                        className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100 outline-none"
+                      />
+                      <input
+                        value={paymentDrafts[record.id]?.paymentReference || ""}
+                        onChange={(event) => setPaymentDrafts((current) => ({
+                          ...current,
+                          [record.id]: {
+                            ...current[record.id],
+                            paymentReference: event.target.value
+                          }
+                        }))}
+                        placeholder="Reference"
+                        className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-100 outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSubmittingKey(`pay-${record.id}`);
+                          try {
+                            await onPayPayrollRecord?.(record.id, paymentDrafts[record.id] || {});
+                          } finally {
+                            setSubmittingKey("");
+                          }
+                        }}
+                        className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-200"
+                      >
+                        {submittingKey === `pay-${record.id}` ? "Paying..." : "Mark paid"}
+                      </button>
+                    </>
+                  ) : null}
+                  {["draft", "approved"].includes(record.status) ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSubmittingKey(`cancel-${record.id}`);
+                        try {
+                          await onCancelPayrollRecord?.(record.id);
+                        } finally {
+                          setSubmittingKey("");
+                        }
+                      }}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+                    >
+                      {submittingKey === `cancel-${record.id}` ? "Cancelling..." : "Cancel"}
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          )) : (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+              No payroll records yet.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">New payroll record</div>
+        <form
+          className="mt-4 grid gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            if (!onCreatePayrollRecord) {
+              return;
+            }
+            setSubmittingKey("payroll-create");
+            try {
+              const created = await onCreatePayrollRecord({
+                ...draft,
+                deductions: normalizedDeductions
+              });
+              if (created?.id) {
+                setDraft({
+                  employeeName: "",
+                  employeeId: "",
+                  payPeriodStart: todayDateInputValue(),
+                  payPeriodEnd: todayDateInputValue(),
+                  grossAmount: "",
+                  currency: workspaceDefaultCurrency || "USD",
+                  deductions: [{ label: "Tax", amount: "" }],
+                  notes: ""
+                });
+              }
+            } finally {
+              setSubmittingKey("");
+            }
+          }}
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input value={draft.employeeName} onChange={(event) => setDraft((current) => ({ ...current, employeeName: event.target.value }))} placeholder="Employee name" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <input value={draft.employeeId} onChange={(event) => setDraft((current) => ({ ...current, employeeId: event.target.value }))} placeholder="Employee ID" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input type="date" value={draft.payPeriodStart} onChange={(event) => setDraft((current) => ({ ...current, payPeriodStart: event.target.value }))} className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <input type="date" value={draft.payPeriodEnd} onChange={(event) => setDraft((current) => ({ ...current, payPeriodEnd: event.target.value }))} className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input type="number" step="0.01" value={draft.grossAmount} onChange={(event) => setDraft((current) => ({ ...current, grossAmount: event.target.value }))} placeholder="Gross amount" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+            <select value={draft.currency} onChange={(event) => setDraft((current) => ({ ...current, currency: event.target.value }))} className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100 outline-none">
+              {FINANCE_CURRENCY_OPTIONS.map((currency) => <option key={`payroll-currency-${currency}`} value={currency}>{currency}</option>)}
+            </select>
+          </div>
+          <div className="rounded-[18px] border border-white/8 bg-slate-950/40 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Deductions</div>
+            <div className="mt-3 space-y-3">
+              {draft.deductions.map((entry, index) => (
+                <div key={`payroll-deduction-${index}`} className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_160px_auto]">
+                  <input value={entry.label} onChange={(event) => setDraft((current) => ({ ...current, deductions: current.deductions.map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row) }))} placeholder="Tax" className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none" />
+                  <input type="number" step="0.01" value={entry.amount} onChange={(event) => setDraft((current) => ({ ...current, deductions: current.deductions.map((row, rowIndex) => rowIndex === index ? { ...row, amount: event.target.value } : row) }))} placeholder="0.00" className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none" />
+                  <button type="button" onClick={() => setDraft((current) => ({ ...current, deductions: current.deductions.filter((_, rowIndex) => rowIndex !== index) || [] }))} className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200">Remove</button>
+                </div>
+              ))}
+              <button type="button" onClick={() => setDraft((current) => ({ ...current, deductions: [...current.deductions, { label: "", amount: "" }] }))} className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200">
+                Add deduction
+              </button>
+            </div>
+          </div>
+          <div className="rounded-[18px] border border-emerald-400/20 bg-emerald-500/10 px-4 py-4 text-sm text-emerald-100">
+            Net amount: <strong>{formatMoney(netAmount, draft.currency || workspaceDefaultCurrency)}</strong>
+          </div>
+          <textarea rows={3} value={draft.notes} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes" className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none" />
+          <button type="submit" disabled={!canManage} className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 disabled:opacity-60">
+            {submittingKey === "payroll-create" ? "Saving..." : "Create payroll record"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceAccountantPortalPanel.jsx -----
+function FinanceAccountantPortalPanel({
+  accountantSummary = null,
+  canExport = false
+}) {
+  return (
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.92fr)]">
+      <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Accountant portal</div>
+            <h3 className="mt-2 text-xl font-bold text-white">Read-only books review</h3>
+          </div>
+          {canExport ? (
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300">Exports available</span>
+          ) : null}
+        </div>
+        <div className="mt-4 space-y-3">
+          {(accountantSummary?.journals || []).slice(0, 12).map((entry) => (
+            <div key={entry.id || entry.entryNumber} className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">{entry.entryNumber || entry.description || "Journal entry"}</div>
+                  <div className="mt-1 text-xs text-slate-500">{entry.description || "Accounting journal"} · {formatDate(entry.postingDate || entry.createdAt)}</div>
+                </div>
+                <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-200">
+                  {entry.status || "posted"}
+                </span>
+              </div>
+            </div>
+          ))}
+          {!accountantSummary?.journals?.length ? (
+            <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+              Accountant summary is available once recent journal activity is loaded.
+            </div>
+          ) : null}
+        </div>
+      </div>
+      <div className="space-y-6">
+        <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Tax summary</div>
+          <div className="mt-4 grid gap-3">
+            <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+              <div className="text-xs text-slate-500">Collected</div>
+              <div className="mt-2 text-sm text-emerald-200">{formatMoneyDisplay(accountantSummary?.taxSummary?.collected || {})}</div>
+            </div>
+            <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+              <div className="text-xs text-slate-500">Paid</div>
+              <div className="mt-2 text-sm text-sky-200">{formatMoneyDisplay(accountantSummary?.taxSummary?.paid || {})}</div>
+            </div>
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Period close review</div>
+          <div className="mt-4 space-y-3">
+            {(accountantSummary?.closeReviewPeriods || []).map((period) => (
+              <div key={period.periodKey} className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-white">{period.periodLabel || period.periodKey}</div>
+                  <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-200">
+                    {period.readinessStatus || period.status || "review"}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/finance/FinanceBankingPanel.jsx -----
+function FinanceBankingPanel({
+  workspaceDefaultCurrency = "USD",
+  bankAccounts = [],
+  bankTransactions = {},
+  expenses = [],
+  payments = [],
+  financeFxRates = null,
+  onCreateBankAccount = null,
+  onCreatePlaidBankAccount = null,
+  onUpdateBankAccount = null,
+  onDeleteBankAccount = null,
+  onCreateBankTransaction = null,
+  onSyncBankTransactions = null,
+  onSyncPlaidAccount = null,
+  onRefreshPlaidBalance = null,
+  onAutoMatchBankTransactions = null,
+  onMatchBankTransactionExpense = null,
+  onMatchBankTransactionPayment = null,
+  onReconcileBankTransaction = null,
+  onReconcileMatchedBankTransactions = null
+}) {
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [accountDraft, setAccountDraft] = useState({
+    accountName: "",
+    accountType: "checking",
+    currency: workspaceDefaultCurrency || "USD",
+    currentBalance: "0"
+  });
+  const [transactionDraft, setTransactionDraft] = useState({
+    transactionDate: todayDateInputValue(),
+    description: "",
+    amount: "",
+    currency: workspaceDefaultCurrency || "USD",
+    category: "other"
+  });
+  const [submittingKey, setSubmittingKey] = useState("");
+  const [plaidDraft, setPlaidDraft] = useState({
+    accountName: "",
+    currency: workspaceDefaultCurrency || "USD",
+    institutionName: "Plaid Bank",
+    plaidAccountId: ""
+  });
+  const csvInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!selectedAccountId && bankAccounts[0]?.id) {
+      setSelectedAccountId(bankAccounts[0].id);
+    } else if (selectedAccountId && !bankAccounts.some((account) => account.id === selectedAccountId)) {
+      setSelectedAccountId(bankAccounts[0]?.id || "");
+    }
+  }, [bankAccounts, selectedAccountId]);
+
+  useEffect(() => {
+    setAccountDraft((current) => ({
+      ...current,
+      currency: current.currency || workspaceDefaultCurrency || "USD"
+    }));
+    setTransactionDraft((current) => ({
+      ...current,
+      currency: current.currency || workspaceDefaultCurrency || "USD"
+    }));
+  }, [workspaceDefaultCurrency]);
+
+  const selectedAccount = bankAccounts.find((account) => account.id === selectedAccountId) || bankAccounts[0] || null;
+  const selectedTransactions = selectedAccount ? (bankTransactions[selectedAccount.id] || []) : [];
+  const unmatchedTransactions = selectedTransactions.filter((transaction) => !transaction.matchedExpenseId && !transaction.matchedInvoicePaymentId);
+  const matchedTransactions = selectedTransactions.filter((transaction) => transaction.matchedExpenseId || transaction.matchedInvoicePaymentId);
+  const reconciledTotals = selectedTransactions.reduce((bucket, transaction) => {
+    if (!transaction.reconciled) {
+      return bucket;
+    }
+    const currency = normalizeCurrencyCode(transaction.currency || selectedAccount?.currency || workspaceDefaultCurrency || "USD");
+    bucket[currency] = roundMoney(Number(bucket[currency] || 0) + Math.abs(Number(transaction.amount || 0)));
+    return bucket;
+  }, {});
+  const lastReconciledAt = selectedTransactions
+    .filter((transaction) => transaction.reconciledAt)
+    .sort((left, right) => new Date(right.reconciledAt).getTime() - new Date(left.reconciledAt).getTime())[0]?.reconciledAt || null;
+  const highConfidenceSuggestions = unmatchedTransactions.filter(
+    (transaction) => Number(transaction.matchConfidence || transaction.matchSuggestions?.[0]?.confidence || 0) > 70
+  );
+  const fxStatusLabel = financeFxRates?.live
+    ? `Live rates as of ${formatDateTime(financeFxRates.timestamp)}`
+    : "Approximate rates (static)";
+
+  function expenseSuggestionsFor(transaction) {
+    const serviceSuggestions = Array.isArray(transaction.matchSuggestions)
+      ? transaction.matchSuggestions.filter((suggestion) => suggestion.referenceType === "expense")
+      : [];
+    if (serviceSuggestions.length) {
+      return serviceSuggestions;
+    }
+
+    return [...expenses]
+      .filter((expense) => !expense.metadata?.reimbursedAt && expense.metadata?.expenseId)
+      .sort((left, right) => {
+        const leftDiff = Math.abs(Number(left.metadata?.amount || 0) - Math.abs(Number(transaction.amount || 0)));
+        const rightDiff = Math.abs(Number(right.metadata?.amount || 0) - Math.abs(Number(transaction.amount || 0)));
+        return leftDiff - rightDiff;
+      })
+      .slice(0, 2)
+      .map((expense) => ({
+        referenceType: "expense",
+        referenceId: expense.metadata.expenseId,
+        confidence: 60,
+        label: expense.metadata.vendorName || "Expense",
+        amount: expense.metadata.amount || 0,
+        currency: expense.metadata.currency || workspaceDefaultCurrency || "USD"
+      }));
+  }
+
+  function paymentSuggestionsFor(transaction) {
+    const serviceSuggestions = Array.isArray(transaction.matchSuggestions)
+      ? transaction.matchSuggestions.filter((suggestion) => suggestion.referenceType === "invoice_payment")
+      : [];
+    if (serviceSuggestions.length) {
+      return serviceSuggestions;
+    }
+
+    return [...payments]
+      .filter((payment) => payment.id)
+      .sort((left, right) => {
+        const leftDiff = Math.abs(Number(left.amount || 0) - Math.abs(Number(transaction.amount || 0)));
+        const rightDiff = Math.abs(Number(right.amount || 0) - Math.abs(Number(transaction.amount || 0)));
+        return leftDiff - rightDiff;
+      })
+      .slice(0, 2)
+      .map((payment) => ({
+        referenceType: "invoice_payment",
+        referenceId: payment.id,
+        confidence: 60,
+        label: payment.invoiceNumber || "Invoice payment",
+        amount: payment.amount || 0,
+        currency: payment.currency || workspaceDefaultCurrency || "USD"
+      }));
+  }
+
+  async function handleCsvImport(event) {
+    const file = event.target.files?.[0];
+    if (!file || !selectedAccount || !onSyncBankTransactions) {
+      return;
+    }
+
+    setSubmittingKey(`sync-${selectedAccount.id}`);
+    try {
+      const text = await file.text();
+      const transactions = parseBankCsv(text)
+        .filter((transaction) => transaction.description && Number.isFinite(Number(transaction.amount)) && Number(transaction.amount) !== 0)
+        .map((transaction) => ({
+          ...transaction,
+          currency: normalizeCurrencyCode(transaction.currency || selectedAccount.currency || workspaceDefaultCurrency || "USD")
+        }));
+      await onSyncBankTransactions(selectedAccount.id, transactions);
+    } finally {
+      setSubmittingKey("");
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  }
+
+  async function handleRunAutoMatch() {
+    if (!selectedAccount || !onAutoMatchBankTransactions) {
+      return;
+    }
+    setSubmittingKey(`auto-match-${selectedAccount.id}`);
+    try {
+      await onAutoMatchBankTransactions(selectedAccount.id);
+    } finally {
+      setSubmittingKey("");
+    }
+  }
+
+  async function handleBulkAcceptHighConfidence() {
+    if (!highConfidenceSuggestions.length) {
+      return;
+    }
+
+    setSubmittingKey(`bulk-match-${selectedAccount?.id || "bank"}`);
+    try {
+      for (const transaction of highConfidenceSuggestions) {
+        const bestSuggestion = Array.isArray(transaction.matchSuggestions)
+          ? [...transaction.matchSuggestions].sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0]
+          : null;
+        if (!bestSuggestion || Number(bestSuggestion.confidence || 0) <= 70) {
+          continue;
+        }
+        if (bestSuggestion.referenceType === "expense") {
+          await onMatchBankTransactionExpense?.(transaction.id, bestSuggestion.referenceId);
+        } else if (bestSuggestion.referenceType === "invoice_payment") {
+          await onMatchBankTransactionPayment?.(transaction.id, bestSuggestion.referenceId);
+        }
+      }
+    } finally {
+      setSubmittingKey("");
+    }
+  }
+
+  return (
+    <div className="finance-banking-panel grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="space-y-6">
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Bank accounts</div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-xl font-bold text-white">Cash position and connected accounts</h3>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold text-slate-300">
+              {fxStatusLabel}
+            </span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {bankAccounts.length ? bankAccounts.map((account) => (
+              <button
+                key={account.id}
+                type="button"
+                onClick={() => setSelectedAccountId(account.id)}
+                className={`w-full rounded-[18px] border px-4 py-4 text-left transition ${
+                  selectedAccount?.id === account.id ? "border-emerald-400/30 bg-emerald-500/10" : "border-white/8 bg-white/5 hover:border-white/15"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-100">{account.accountName}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                      <span>{account.accountType} · {account.status}</span>
+                      <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-200">
+                        {account.isManual ? "Upload CSV" : "Connected"}
+                      </span>
+                      {!account.isManual && account.plaidInstitutionName ? (
+                        <span className="text-slate-400">{account.plaidInstitutionName}{account.plaidMask ? ` •••• ${account.plaidMask}` : ""}</span>
+                      ) : null}
+                    </div>
+                    {account.lastSyncedAt ? (
+                      <div className="mt-2 text-xs text-slate-500">Last synced {formatDateTime(account.lastSyncedAt)}</div>
+                    ) : null}
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm font-semibold text-emerald-300">{formatMoney(account.currentBalance || 0, account.currency || workspaceDefaultCurrency)}</div>
+                    <div className="mt-1 text-xs text-slate-500">{account.currency}</div>
+                  </div>
+                </div>
+              </button>
+            )) : (
+              <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                No bank accounts yet. Add your first manual account below.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">New bank account</div>
+          <form
+            className="mt-5 grid gap-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              if (!onCreateBankAccount) {
+                return;
+              }
+              setSubmittingKey("account");
+              try {
+                const account = await onCreateBankAccount(accountDraft);
+                if (account?.id) {
+                  setSelectedAccountId(account.id);
+                  setAccountDraft({
+                    accountName: "",
+                    accountType: "checking",
+                    currency: workspaceDefaultCurrency || "USD",
+                    currentBalance: "0"
+                  });
+                }
+              } finally {
+                setSubmittingKey("");
+              }
+            }}
+          >
+            <input
+              value={accountDraft.accountName}
+              onChange={(event) => setAccountDraft((current) => ({ ...current, accountName: event.target.value }))}
+              placeholder="Operating Account"
+              className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+            />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <select
+                value={accountDraft.accountType}
+                onChange={(event) => setAccountDraft((current) => ({ ...current, accountType: event.target.value }))}
+                className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100 outline-none"
+              >
+                <option value="checking">Checking</option>
+                <option value="savings">Savings</option>
+                <option value="credit">Credit</option>
+                <option value="other">Other</option>
+              </select>
+              <select
+                value={accountDraft.currency}
+                onChange={(event) => setAccountDraft((current) => ({ ...current, currency: event.target.value }))}
+                className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100 outline-none"
+              >
+                {FINANCE_CURRENCY_OPTIONS.map((currencyCode) => (
+                  <option key={`bank-account-currency-${currencyCode}`} value={currencyCode}>{currencyCode}</option>
+                ))}
+              </select>
+              <input
+                type="number"
+                step="0.01"
+                value={accountDraft.currentBalance}
+                onChange={(event) => setAccountDraft((current) => ({ ...current, currentBalance: event.target.value }))}
+                placeholder="0.00"
+                className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300"
+            >
+              {submittingKey === "account" ? "Saving..." : "Add bank account"}
+            </button>
+          </form>
+          {onCreatePlaidBankAccount ? (
+            <form
+              className="mt-4 grid gap-3 rounded-[18px] border border-white/8 bg-white/5 p-4"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                setSubmittingKey("plaid-account");
+                try {
+                  const account = await onCreatePlaidBankAccount(plaidDraft);
+                  if (account?.id) {
+                    setSelectedAccountId(account.id);
+                    setPlaidDraft({
+                      accountName: "",
+                      currency: workspaceDefaultCurrency || "USD",
+                      institutionName: "Plaid Bank",
+                      plaidAccountId: ""
+                    });
+                  }
+                } finally {
+                  setSubmittingKey("");
+                }
+              }}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-300">Connect bank</div>
+              <input
+                value={plaidDraft.accountName}
+                onChange={(event) => setPlaidDraft((current) => ({ ...current, accountName: event.target.value }))}
+                placeholder="Connected checking account"
+                className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+              />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <input
+                  value={plaidDraft.institutionName}
+                  onChange={(event) => setPlaidDraft((current) => ({ ...current, institutionName: event.target.value }))}
+                  placeholder="Institution"
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                />
+                <input
+                  value={plaidDraft.plaidAccountId}
+                  onChange={(event) => setPlaidDraft((current) => ({ ...current, plaidAccountId: event.target.value }))}
+                  placeholder="Account id (optional)"
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                />
+                <select
+                  value={plaidDraft.currency}
+                  onChange={(event) => setPlaidDraft((current) => ({ ...current, currency: event.target.value }))}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100 outline-none"
+                >
+                  {FINANCE_CURRENCY_OPTIONS.map((currencyCode) => (
+                    <option key={`plaid-account-currency-${currencyCode}`} value={currencyCode}>{currencyCode}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-300"
+              >
+                {submittingKey === "plaid-account" ? "Connecting..." : "Connect Bank Account"}
+              </button>
+            </form>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Transactions</div>
+              <h3 className="mt-2 text-xl font-bold text-white">{selectedAccount?.accountName || "Select an account"}</h3>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              {selectedAccount ? (
+                <>
+                  <input
+                    ref={csvInputRef}
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={handleCsvImport}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => csvInputRef.current?.click()}
+                    className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+                  >
+                    {submittingKey === `sync-${selectedAccount.id}` ? "Importing..." : selectedAccount.isManual ? "Import transactions" : "Upload CSV"}
+                  </button>
+                  {!selectedAccount.isManual && onSyncPlaidAccount ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSubmittingKey(`plaid-sync-${selectedAccount.id}`);
+                        try {
+                          await onSyncPlaidAccount(selectedAccount.id);
+                        } finally {
+                          setSubmittingKey("");
+                        }
+                      }}
+                      className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300"
+                    >
+                      {submittingKey === `plaid-sync-${selectedAccount.id}` ? "Syncing..." : "Sync now"}
+                    </button>
+                  ) : null}
+                  {!selectedAccount.isManual && onRefreshPlaidBalance ? (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSubmittingKey(`plaid-balance-${selectedAccount.id}`);
+                        try {
+                          await onRefreshPlaidBalance(selectedAccount.id);
+                        } finally {
+                          setSubmittingKey("");
+                        }
+                      }}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+                    >
+                      {submittingKey === `plaid-balance-${selectedAccount.id}` ? "Refreshing..." : "Refresh balance"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={handleRunAutoMatch}
+                    className="rounded-full border border-sky-400/20 bg-sky-500/10 px-4 py-2 text-xs font-semibold text-sky-300"
+                  >
+                    {submittingKey === `auto-match-${selectedAccount.id}` ? "Matching..." : "Auto-match"}
+                  </button>
+                  {highConfidenceSuggestions.length ? (
+                    <button
+                      type="button"
+                      onClick={handleBulkAcceptHighConfidence}
+                      className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+                    >
+                      {submittingKey === `bulk-match-${selectedAccount.id}` ? "Applying..." : "Accept high confidence"}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+              {selectedAccount && onDeleteBankAccount ? (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setSubmittingKey(`delete-${selectedAccount.id}`);
+                    try {
+                      await onDeleteBankAccount(selectedAccount.id);
+                    } finally {
+                      setSubmittingKey("");
+                    }
+                  }}
+                  className="rounded-full border border-rose-400/20 bg-rose-500/10 px-4 py-2 text-xs font-semibold text-rose-300"
+                >
+                  {submittingKey === `delete-${selectedAccount.id}` ? "Disconnecting..." : "Disconnect"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+          {selectedAccount ? (
+            <>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Matched</div>
+                  <div className="mt-2 text-2xl font-bold text-slate-100">{matchedTransactions.length}</div>
+                </div>
+                <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Unmatched</div>
+                  <div className="mt-2 text-2xl font-bold text-slate-100">{unmatchedTransactions.length}</div>
+                </div>
+                <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Reconciled</div>
+                  <div className="mt-2 text-sm font-semibold text-emerald-300">{formatMoneyDisplay(reconciledTotals || {})}</div>
+                </div>
+                <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Last sync</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-100">{selectedAccount.lastSyncedAt ? formatDateTime(selectedAccount.lastSyncedAt) : "Never"}</div>
+                  <div className="mt-1 text-xs text-slate-500">{lastReconciledAt ? `Last reconciliation ${formatTimeAgo(lastReconciledAt)}` : "No reconciliations yet"}</div>
+                </div>
+              </div>
+
+              <form
+                className="mt-5 grid gap-3"
+                onSubmit={async (event) => {
+                  event.preventDefault();
+                  if (!onCreateBankTransaction) {
+                    return;
+                  }
+                  setSubmittingKey(`transaction-${selectedAccount.id}`);
+                  try {
+                    await onCreateBankTransaction(selectedAccount.id, transactionDraft);
+                    setTransactionDraft({
+                      transactionDate: todayDateInputValue(),
+                      description: "",
+                      amount: "",
+                      currency: selectedAccount.currency || workspaceDefaultCurrency || "USD",
+                      category: "other"
+                    });
+                  } finally {
+                    setSubmittingKey("");
+                  }
+                }}
+              >
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input
+                    type="date"
+                    value={transactionDraft.transactionDate}
+                    onChange={(event) => setTransactionDraft((current) => ({ ...current, transactionDate: event.target.value }))}
+                    className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                  />
+                  <input
+                    value={transactionDraft.description}
+                    onChange={(event) => setTransactionDraft((current) => ({ ...current, description: event.target.value }))}
+                    placeholder="Supplier payment"
+                    className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                  />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={transactionDraft.amount}
+                    onChange={(event) => setTransactionDraft((current) => ({ ...current, amount: event.target.value }))}
+                    placeholder="-1250.00"
+                    className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                  />
+                  <select
+                    value={transactionDraft.currency}
+                    onChange={(event) => setTransactionDraft((current) => ({ ...current, currency: event.target.value }))}
+                    className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3 text-sm text-slate-100 outline-none"
+                  >
+                    {FINANCE_CURRENCY_OPTIONS.map((currencyCode) => (
+                      <option key={`bank-transaction-currency-${currencyCode}`} value={currencyCode}>{currencyCode}</option>
+                    ))}
+                  </select>
+                  <input
+                    value={transactionDraft.category}
+                    onChange={(event) => setTransactionDraft((current) => ({ ...current, category: event.target.value }))}
+                    placeholder="supplies"
+                    className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-100 outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300"
+                >
+                  {submittingKey === `transaction-${selectedAccount.id}` ? "Saving..." : "Add transaction"}
+                </button>
+              </form>
+
+              <div className="mt-6 space-y-3">
+                {selectedTransactions.length ? selectedTransactions.map((transaction) => {
+                  const expenseSuggestions = expenseSuggestionsFor(transaction);
+                  const paymentSuggestions = paymentSuggestionsFor(transaction);
+                  const topSuggestion = [...expenseSuggestions, ...paymentSuggestions]
+                    .sort((left, right) => Number(right.confidence || 0) - Number(left.confidence || 0))[0] || null;
+                  return (
+                    <div key={transaction.id} className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-100">{transaction.description}</div>
+                          <div className="mt-1 text-xs text-slate-500">{formatDate(transaction.transactionDate)} · {transaction.category || "other"}</div>
+                        </div>
+                        <div className={`text-sm font-semibold ${Number(transaction.amount || 0) >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          {formatMoney(transaction.amount || 0, transaction.currency || selectedAccount.currency)}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        {transaction.matchedExpenseId ? (
+                          <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-sky-300">Matched to expense</span>
+                        ) : null}
+                        {transaction.matchedInvoicePaymentId ? (
+                          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-emerald-300">Matched to payment</span>
+                        ) : null}
+                        {transaction.reconciled ? (
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Reconciled</span>
+                        ) : null}
+                        {Number(transaction.matchConfidence || 0) > 0 ? (
+                          <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-amber-200">
+                            Match confidence {Math.round(Number(transaction.matchConfidence || 0))}%
+                          </span>
+                        ) : null}
+                      </div>
+                      {topSuggestion && Number(topSuggestion.confidence || 0) > 70 ? (
+                        <div className="mt-3 rounded-[14px] border border-emerald-400/15 bg-emerald-500/5 px-3 py-3 text-xs text-emerald-200">
+                          Suggested {topSuggestion.referenceType === "expense" ? "expense" : "payment"}: {topSuggestion.label} · {formatMoney(topSuggestion.amount || 0, topSuggestion.currency || selectedAccount.currency)}
+                        </div>
+                      ) : null}
+                      {!transaction.matchedExpenseId && !transaction.matchedInvoicePaymentId ? (
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          <div className="rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Suggested expenses</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {expenseSuggestions.length ? expenseSuggestions.map((expense) => (
+                                <button
+                                  key={`tx-expense-${transaction.id}-${expense.referenceId || expense.metadata?.expenseId}`}
+                                  type="button"
+                                  onClick={() => onMatchBankTransactionExpense?.(transaction.id, expense.referenceId || expense.metadata?.expenseId)}
+                                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200"
+                                >
+                                  {(expense.label || expense.metadata?.vendorName || "Expense")} · {formatMoney(expense.amount || expense.metadata?.amount || 0, expense.currency || expense.metadata?.currency)}
+                                </button>
+                              )) : <span className="text-xs text-slate-500">No close expense matches</span>}
+                            </div>
+                          </div>
+                          <div className="rounded-[14px] border border-white/8 bg-slate-950/40 px-3 py-3">
+                            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Suggested payments</div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {paymentSuggestions.length ? paymentSuggestions.map((payment) => (
+                                <button
+                                  key={`tx-payment-${transaction.id}-${payment.referenceId || payment.id}`}
+                                  type="button"
+                                  onClick={() => onMatchBankTransactionPayment?.(transaction.id, payment.referenceId || payment.id)}
+                                  className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200"
+                                >
+                                  {(payment.label || payment.invoiceNumber || "Payment")} · {formatMoney(payment.amount || 0, payment.currency)}
+                                </button>
+                              )) : <span className="text-xs text-slate-500">No close payment matches</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                      {!transaction.reconciled ? (
+                        <div className="mt-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => onReconcileBankTransaction?.(transaction.id)}
+                              className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
+                            >
+                              Mark reconciled
+                            </button>
+                            {(transaction.matchedExpenseId || transaction.matchedInvoicePaymentId) && onReconcileMatchedBankTransactions ? (
+                              <button
+                                type="button"
+                                onClick={() => onReconcileMatchedBankTransactions(selectedAccount.id)}
+                                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+                              >
+                                Reconcile matched batch
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                }) : (
+                  <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                    No transactions for this account yet.
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="mt-5 rounded-[18px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+              Select or create a bank account to add and match transactions.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OperationsBridgePanel({
+  financeMode = false,
+  financeSummary = null,
+  warehouseSummary = null,
+  executionSummary = null,
+  recentPayments = [],
+  recentShipments = [],
+  topCustomers = [],
+  onSelectMetric,
+  onNavigate = null
+}) {
+  const financeAttention = Number(financeSummary?.dueAttention || 0) + Number(financeSummary?.reconcileQueue || 0);
+  const warehouseAttention =
+    Number(warehouseSummary?.reorderAttention || 0) +
+    Number(warehouseSummary?.delayedOrders || 0) +
+    Number(warehouseSummary?.pendingPurchaseOrders || 0);
+  const executionAttention = Number(executionSummary?.executionAttention || 0);
+  const sharedAttention = financeAttention + warehouseAttention + executionAttention;
+  const operationsCards = [
+    {
+      id: "ops-attention",
+      label: "Shared attention",
+      value: `${sharedAttention}`,
+      subvalue: `${financeAttention} finance · ${warehouseAttention} warehouse · ${executionAttention} execution`
+    },
+    {
+      id: "finance-outstanding",
+      label: "Finance pressure",
+      value: `${financeSummary?.outstandingInvoices || 0}`,
+      subvalue: `${formatMoneyDisplay(financeSummary?.outstandingAmount || 0)} open`
+    },
+    {
+      id: "warehouse-low-stock",
+      label: "Warehouse pressure",
+      value: `${warehouseSummary?.reorderAttention || 0}`,
+      subvalue: `${warehouseSummary?.lowStockItems || 0} low stock · ${warehouseSummary?.pendingPurchaseOrders || 0} open PO`
+    },
+    {
+      id: "execution-pressure",
+      label: "Execution pressure",
+      value: `${executionSummary?.executionAttention || 0}`,
+      subvalue: `${executionSummary?.overdueTasks || 0} overdue task${Number(executionSummary?.overdueTasks || 0) === 1 ? "" : "s"}`
+    }
+  ];
+  const attentionItems = [
+    financeSummary?.overdueInvoices
+      ? {
+          id: "overdue",
+          title: `${financeSummary.overdueInvoices} overdue invoice${financeSummary.overdueInvoices === 1 ? "" : "s"}`,
+          detail: `${formatMoneyDisplay(financeSummary?.overdueAmount || 0)} now needs follow-up`,
+          accent: financeMode ? "#fda4af" : "#e11d48"
+        }
+      : null,
+    financeSummary?.outstandingInvoices
+      ? {
+          id: "outstanding",
+          title: `${financeSummary.outstandingInvoices} invoice${financeSummary.outstandingInvoices === 1 ? "" : "s"} still open`,
+          detail: `${formatMoneyDisplay(financeSummary?.outstandingAmount || 0)} remains unpaid`,
+          accent: financeMode ? "#fcd34d" : "#d97706"
+        }
+      : null,
+    warehouseSummary?.reorderAttention
+      ? {
+          id: "reorder",
+          title: `${warehouseSummary.reorderAttention} product${warehouseSummary.reorderAttention === 1 ? "" : "s"} need reorder`,
+          detail: `${warehouseSummary.lowStockItems || warehouseSummary.reorderAttention} low-stock signal${Number(warehouseSummary.lowStockItems || warehouseSummary.reorderAttention) === 1 ? "" : "s"} active · ${warehouseSummary.pendingPurchaseOrders || 0} purchase order${Number(warehouseSummary.pendingPurchaseOrders || 0) === 1 ? "" : "s"} open`,
+          accent: financeMode ? "#93c5fd" : "#2563eb"
+        }
+      : null,
+    warehouseSummary?.delayedOrders
+      ? {
+          id: "delayed",
+          title: `${warehouseSummary.delayedOrders} shipment${warehouseSummary.delayedOrders === 1 ? "" : "s"} delayed`,
+          detail: "Warehouse handoff timing needs review alongside finance commitments.",
+          accent: financeMode ? "#c4b5fd" : "#7c3aed"
+        }
+      : null,
+    financeSummary?.recurringDueInvoices
+      ? {
+          id: "recurring-due",
+          title: `${financeSummary.recurringDueInvoices} recurring invoice${financeSummary.recurringDueInvoices === 1 ? "" : "s"} due`,
+          detail: "Scheduled finance work is ready to issue.",
+          accent: financeMode ? "#6ee7b7" : "#059669"
+        }
+      : null,
+    executionSummary?.overdueTasks
+      ? {
+          id: "execution-overdue",
+          title: `${executionSummary.overdueTasks} overdue task${executionSummary.overdueTasks === 1 ? "" : "s"}`,
+          detail: "Execution follow-up is slipping and may now affect delivery timing.",
+          accent: financeMode ? "#fca5a5" : "#dc2626"
+        }
+      : null,
+    executionSummary?.projectsNeedingAttention
+      ? {
+          id: "execution-projects",
+          title: `${executionSummary.projectsNeedingAttention} active project${executionSummary.projectsNeedingAttention === 1 ? "" : "s"} need review`,
+          detail: "Project progress or due timing is now worth a manager pass.",
+          accent: financeMode ? "#c4b5fd" : "#7c3aed"
+        }
+      : null
+  ].filter(Boolean).slice(0, 5);
+  const activityItems = [
+    ...recentPayments.map((payment) => ({
+      id: `payment-${payment.id}`,
+      sortAt: payment.recordedAt,
+      eyebrow: "Finance",
+      title: `${payment.invoiceNumber} payment recorded`,
+      detail: `${payment.customerName} · ${formatMoney(payment.amount || 0, payment.currency)} · ${formatPaymentMethod(payment.method)}`,
+      meta: payment.reference ? `Ref ${payment.reference}` : payment.recordedBy?.name ? `Recorded by ${payment.recordedBy.name}` : "Payment logged",
+      accent: financeMode ? "#34d399" : "#059669"
+    })),
+    ...recentShipments.map((shipment) => ({
+      id: `shipment-${shipment.id}`,
+      sortAt: shipment.updatedAt || shipment.createdAt || shipment.estimatedDelivery,
+      eyebrow: "Warehouse",
+      title: `${shipment.orderNumber} ${warehouseStatusLabel(shipment.status).toLowerCase()}`,
+      detail: `${shipment.destination} · ${warehouseShipmentTypeLabel(shipment.shipmentType)} · ${shipment.itemsCount || 1} item${Number(shipment.itemsCount || 1) === 1 ? "" : "s"}`,
+      meta: shipment.estimatedDelivery ? `ETA ${formatDate(shipment.estimatedDelivery)}` : "Shipment updated",
+      accent: financeMode ? "#93c5fd" : "#2563eb"
+    }))
+  ]
+    .filter((item) => item.sortAt)
+    .sort((left, right) => new Date(right.sortAt).getTime() - new Date(left.sortAt).getTime())
+    .slice(0, 6);
+  const handoffCues = [
+    warehouseSummary?.reorderAttention && financeSummary?.outstandingInvoices
+      ? {
+          id: "handoff-reorder-cash",
+          title: "Reorder pressure meets open cash pressure",
+          detail: `${warehouseSummary.reorderAttention} warehouse item${warehouseSummary.reorderAttention === 1 ? "" : "s"} need replenishment while ${financeSummary.outstandingInvoices} invoice${financeSummary.outstandingInvoices === 1 ? "" : "s"} remain unpaid.`,
+          consequence: "Review collection timing before replenishment pressure turns into a purchasing squeeze.",
+          eyebrow: "Cross-module",
+          actionLabel: "Open Finance pressure",
+          action: () => onNavigate?.({ scope: "finance", tab: "Pinned", metricId: "finance-outstanding" })
+        }
+      : null,
+    warehouseSummary?.delayedOrders && financeSummary?.overdueInvoices
+      ? {
+          id: "handoff-delay-risk",
+          title: "Delayed shipments may raise customer and cash risk",
+          detail: `${warehouseSummary.delayedOrders} shipment${warehouseSummary.delayedOrders === 1 ? "" : "s"} are delayed while ${financeSummary.overdueInvoices} invoice${financeSummary.overdueInvoices === 1 ? "" : "s"} are already overdue.`,
+          consequence: "Operations and finance may need the same customer conversations soon.",
+          eyebrow: "Cross-module",
+          actionLabel: "Open overdue invoices",
+          action: () => onNavigate?.({ scope: "finance", tab: "Pinned", metricId: "finance-overdue" })
+        }
+      : null,
+    executionSummary?.overdueTasks && warehouseSummary?.delayedOrders
+      ? {
+          id: "handoff-execution-warehouse",
+          title: "Execution slippage is now sitting beside shipment delay",
+          detail: `${executionSummary.overdueTasks} overdue task${executionSummary.overdueTasks === 1 ? "" : "s"} are active while ${warehouseSummary.delayedOrders} shipment${warehouseSummary.delayedOrders === 1 ? "" : "s"} remain delayed.`,
+          consequence: "Check internal execution blockers before more shipment work slips.",
+          eyebrow: "Execution to Warehouse",
+          actionLabel: "Open projects",
+          action: () => onNavigate?.({ scope: "projects" })
+        }
+      : null,
+    executionSummary?.projectsNeedingAttention && financeSummary?.outstandingInvoices
+      ? {
+          id: "handoff-execution-finance",
+          title: "Project pressure is rising while finance remains open",
+          detail: `${executionSummary.projectsNeedingAttention} project${executionSummary.projectsNeedingAttention === 1 ? "" : "s"} need review and ${financeSummary.outstandingInvoices} invoice${financeSummary.outstandingInvoices === 1 ? "" : "s"} still remain unpaid.`,
+          consequence: "Keep delivery commitments and collection timing aligned before pressure spreads.",
+          eyebrow: "Execution to Finance",
+          actionLabel: "Open tasks",
+          action: () => onNavigate?.({ scope: "tasks" })
+        }
+      : null,
+    warehouseSummary?.reorderAttention
+      ? {
+          id: "handoff-purchasing",
+          title: "Reorder activity needs purchasing attention",
+          detail: `${warehouseSummary.reorderAttention} item${warehouseSummary.reorderAttention === 1 ? "" : "s"} are pushing toward replenishment and ${warehouseSummary.pendingPurchaseOrders || 0} purchase order${Number(warehouseSummary.pendingPurchaseOrders || 0) === 1 ? "" : "s"} are already open.`,
+          consequence: "Use Finance to review expense readiness before confirming the next purchasing step.",
+          eyebrow: "Warehouse to Finance",
+          actionLabel: "Open finance expenses",
+          action: () => onNavigate?.({ scope: "finance", tab: "Media", metricId: "finance-expenses" })
+        }
+      : null,
+    financeSummary?.recurringDueInvoices && warehouseSummary?.reorderAttention
+      ? {
+          id: "handoff-recurring-stock",
+          title: "Recurring finance work is due while stock pressure is active",
+          detail: `${financeSummary.recurringDueInvoices} recurring invoice${financeSummary.recurringDueInvoices === 1 ? "" : "s"} are ready to issue and ${warehouseSummary.reorderAttention} stock item${warehouseSummary.reorderAttention === 1 ? "" : "s"} need replenishment.`,
+          consequence: "Use both modules together to keep billing and fulfillment timing aligned.",
+          eyebrow: "Finance to Warehouse",
+          actionLabel: "Open recurring work",
+          action: () => onNavigate?.({ scope: "finance", tab: "Media", metricId: "finance-overdue" })
+        }
+      : null
+  ]
+    .concat(
+      (warehouseSummary?.warehouseHandoffCues || []).map((cue) => ({
+        id: `handoff-warehouse-${cue.id}`,
+        title: cue.title,
+        detail: cue.detail,
+        consequence:
+          cue.signal === "risk"
+            ? "Check the shipment path and replenishment timing together before the delay spreads."
+            : cue.signal === "attention"
+              ? "Review both stock pressure and shipment timing in the same pass."
+              : "This may improve on its own, but it is worth keeping in the shared view.",
+        eyebrow: "Warehouse operations",
+        actionLabel: "Open Warehouse",
+        action: () => onNavigate?.({ scope: "warehouse", tab: "Media", metricId: cue.targetMetricId || "warehouse-in-transit" })
+      }))
+    )
+    .filter(Boolean)
+    .slice(0, 4);
+
+  return (
+    <div
+      className="rounded-[24px] p-5"
+      style={
+        financeMode
+          ? {
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "linear-gradient(180deg,#0f1726 0%,#101827 100%)",
+              boxShadow: "0 18px 48px rgba(0,0,0,0.24)"
+            }
+          : {
+              border: "1px solid #dbeafe",
+              background: "linear-gradient(180deg,#f8fbff 0%,#eef6ff 100%)",
+              boxShadow: "0 18px 40px rgba(37,99,235,0.08)"
+            }
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div
+            className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+            style={{ color: financeMode ? "#93c5fd" : "#2563eb" }}
+          >
+            Operations bridge
+          </div>
+          <h3 className={`mt-2 text-xl font-bold ${financeMode ? "text-slate-50" : "text-slate-900"}`}>Finance and Warehouse together</h3>
+          <p className={`mt-1 max-w-2xl text-sm ${financeMode ? "text-slate-400" : "text-slate-600"}`}>
+            Shared operational visibility for workspaces running both modules, without turning the product into one merged system.
+          </p>
+        </div>
+        {topCustomers.length ? (
+          <div
+            className="rounded-[18px] px-4 py-3"
+            style={
+              financeMode
+                ? {
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.04)"
+                  }
+                : {
+                    border: "1px solid #dbeafe",
+                    background: "#ffffff"
+                  }
+            }
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Top open customer</div>
+            <div className={`mt-2 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{topCustomers[0].name}</div>
+            <div className="mt-1 text-xs text-slate-500">{formatMoneyDisplay((topCustomers[0].outstandingAmountByCurrency ?? topCustomers[0].outstandingAmount) || 0)} still open</div>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        {operationsCards.map((card) => (
+          <button
+            key={card.id}
+            type="button"
+            onClick={() => onSelectMetric?.({ id: card.id, label: card.label, value: card.value, subvalue: card.subvalue })}
+            className="rounded-[18px] px-4 py-4 text-left transition hover:-translate-y-0.5"
+            style={
+              financeMode
+                ? {
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.05)"
+                  }
+                : {
+                    border: "1px solid #dbeafe",
+                    background: "#ffffff"
+                  }
+            }
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{card.label}</div>
+            <div className={`mt-3 text-3xl font-bold ${financeMode ? "text-slate-50" : "text-slate-900"}`}>{card.value}</div>
+            <div className="mt-2 text-sm text-slate-500">{card.subvalue}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+        <div>
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Needs coordination</div>
+          <div className="space-y-3">
+            {attentionItems.length ? attentionItems.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-[18px] px-4 py-4"
+                style={
+                  financeMode
+                    ? {
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.04)"
+                      }
+                    : {
+                        border: "1px solid #dbeafe",
+                        background: "#ffffff"
+                      }
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className={`text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                    <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                  </div>
+                  <span className="mt-0.5 h-2.5 w-2.5 rounded-full" style={{ background: item.accent }} />
+                </div>
+              </div>
+            )) : (
+              <div
+                className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+                style={
+                  financeMode
+                    ? {
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.04)"
+                      }
+                    : {
+                        border: "1px solid #dbeafe",
+                        background: "#ffffff"
+                      }
+                }
+              >
+                Nothing is currently asking for cross-module coordination.
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Recent cross-module flow</div>
+          <div className="space-y-3">
+            {activityItems.length ? activityItems.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-[18px] px-4 py-4"
+                style={
+                  financeMode
+                    ? {
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.04)"
+                      }
+                    : {
+                        border: "1px solid #dbeafe",
+                        background: "#ffffff"
+                      }
+                }
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: item.accent }}>{item.eyebrow}</div>
+                    <div className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                    <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                    <div className="mt-2 text-xs text-slate-500">{item.meta}</div>
+                  </div>
+                  <div className="text-right text-xs text-slate-500">{formatDateTime(item.sortAt)}</div>
+                </div>
+              </div>
+            )) : (
+              <div
+                className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+                style={
+                  financeMode
+                    ? {
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        background: "rgba(255,255,255,0.04)"
+                      }
+                    : {
+                        border: "1px solid #dbeafe",
+                        background: "#ffffff"
+                      }
+                }
+              >
+                Shared finance and warehouse events will show up here as the workspace gets busier.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Handoff cues</div>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {handoffCues.length ? handoffCues.map((cue) => (
+            <button
+              key={cue.id}
+              type="button"
+              onClick={cue.action}
+              className="rounded-[18px] px-4 py-4 text-left transition hover:-translate-y-0.5"
+              style={
+                financeMode
+                  ? {
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)"
+                    }
+                  : {
+                      border: "1px solid #dbeafe",
+                      background: "#ffffff"
+                    }
+              }
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: financeMode ? "#c4b5fd" : "#7c3aed" }}>
+                    {cue.eyebrow}
+                  </div>
+                  <div className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{cue.title}</div>
+                  <div className="mt-1 text-sm text-slate-500">{cue.detail}</div>
+                  <div className="mt-2 text-xs text-slate-500">{cue.consequence}</div>
+                </div>
+                <div className="shrink-0 text-xs font-semibold text-slate-500">{cue.actionLabel}</div>
+              </div>
+            </button>
+          )) : (
+            <div
+              className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+              style={
+                financeMode
+                  ? {
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)"
+                    }
+                  : {
+                      border: "1px solid #dbeafe",
+                      background: "#ffffff"
+                    }
+              }
+            >
+              Cross-module handoff cues will appear here when finance pressure and warehouse pressure start affecting each other.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ metric, onSelect, financeMode = false, onActivate = null }) {
+  const meta = financeMetricMeta(metric);
+  const clickHandler = onActivate || (() => onSelect(metric));
+  const highlightTone = metric?.highlightTone || "";
+  const highlightStyle =
+    !financeMode && highlightTone === "danger"
+      ? { background: "linear-gradient(135deg,#fff1f2,#ffe4e6)", color: "#be123c" }
+      : !financeMode && highlightTone === "warning"
+        ? { background: "linear-gradient(135deg,#fffbeb,#fef3c7)", color: "#b45309" }
+        : !financeMode && highlightTone === "info"
+          ? { background: "linear-gradient(135deg,#eff6ff,#dbeafe)", color: "#1d4ed8" }
+          : undefined;
+
+  return (
+    <motion.button
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      type="button"
+      onClick={clickHandler}
+      className={`text-left ${financeMode ? "rounded-[22px] p-5" : `rounded-2xl bg-gradient-to-br p-4 shadow-sm ${metricTone(metric.id)}`}`}
+      style={
+        financeMode
+          ? {
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "#111827",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.35)"
+            }
+          : highlightStyle
+      }
+    >
+      <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${financeMode ? "" : "text-current/70"}`} style={financeMode ? { color: meta.accent } : undefined}>
+        {financeMode ? meta.label : metric.label}
+      </p>
+      <p className={`mt-2 font-bold ${financeMode ? "text-[28px] text-slate-50" : "text-2xl"}`} style={financeMode ? { fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif' } : undefined}>
+        {metric.value}
+      </p>
+      {metric.subvalue ? <p className={`mt-1 text-xs ${financeMode ? "text-slate-400" : "text-current/70"}`}>{metric.subvalue}</p> : null}
+    </motion.button>
+  );
+}
+
+function DueDateTone({ dueDate, status }) {
+  if (status === "approved") return "bg-emerald-100 text-emerald-700";
+  if (status === "rejected") return "bg-rose-100 text-rose-700";
+  const diffDays = Math.ceil((new Date(dueDate).getTime() - Date.now()) / 86400000);
+  if (status === "overdue" || diffDays < 0) return "bg-rose-100 text-rose-700";
+  if (diffDays <= 2) return "bg-orange-100 text-orange-700";
+  return "bg-emerald-100 text-emerald-700";
+}
+
+// ----- workspace/warehouse/WarehousePanels.jsx -----
+function StockAlertMessageCard({ message, onReorderStart, onReorderChange, onReorderConfirm, onDismiss }) {
+  const signal = message.metadata.stockSignal || "healthy";
+  return (
+    <motion.div layout className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <h4 className="text-lg font-bold text-slate-900">{message.metadata.productName}</h4>
+          <p className="text-sm text-slate-500">
+            SKU {message.metadata.sku}
+            {message.metadata.itemType ? ` · ${message.metadata.itemType}` : ""}
+            {message.metadata.unit ? ` · ${message.metadata.unit}` : ""}
+          </p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+          signal === "low_stock"
+            ? "bg-rose-100 text-rose-700"
+            : signal === "restock_incoming"
+              ? "bg-emerald-100 text-emerald-700"
+              : "bg-slate-100 text-slate-700"
+        }`}>
+          {warehouseStockSignalLabel(signal)}
+        </span>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">On hand</div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">{message.metadata.currentStock} {message.metadata.unit || "units"}</div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Minimum</div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">{message.metadata.minimumStock} {message.metadata.unit || "units"}</div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Stock gap</div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">{message.metadata.stockGap || 0}</div>
+        </div>
+        <div className="rounded-xl bg-slate-50 px-3 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Catalog status</div>
+          <div className="mt-2 text-sm font-semibold text-slate-900">{warehouseProductStatusLabel(message.metadata.productStatus)}</div>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" onClick={() => onReorderStart(message)} className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-bold text-white shadow-sm">
+          Reorder Now
+        </button>
+        <button type="button" onClick={() => onDismiss(message)} className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-600">
+          Dismiss
+        </button>
+      </div>
+      {message.metadata.showQuantityInput ? (
+        <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+          <input
+            type="number"
+            min="1"
+            value={message.metadata.reorderAmount || message.metadata.reorderQuantity}
+            onChange={(event) => onReorderChange(message, event.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => onReorderConfirm(message)}
+            className="mt-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white"
+          >
+            Confirm reorder
+          </button>
+        </div>
+      ) : null}
+      {message.metadata.status === "resolved" ? (
+        <p className="mt-3 text-sm font-medium text-emerald-700">Reorder confirmed.</p>
+      ) : null}
+      {message.metadata.status === "dismissed" ? (
+        <p className="mt-3 text-sm font-medium text-slate-500">Alert dismissed.</p>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function ShipmentMessageCard({ message, canManage, onMarkDelivered, onUpdateStatus }) {
+  const [selectedStatus, setSelectedStatus] = useState(message.metadata.status || "dispatched");
+  const [statusSubmitting, setStatusSubmitting] = useState(false);
+  const latestStatusUpdate = message.metadata.lastStatusUpdate || null;
+
+  useEffect(() => {
+    setSelectedStatus(message.metadata.status || "dispatched");
+  }, [message.metadata.status]);
+
+  async function handleUpdateStatus() {
+    if (!onUpdateStatus || !message.metadata.orderId || !selectedStatus) {
+      return;
+    }
+
+    setStatusSubmitting(true);
+    try {
+      await onUpdateStatus(message, selectedStatus);
+    } finally {
+      setStatusSubmitting(false);
+    }
+  }
+
+  return (
+    <motion.div layout className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{message.metadata.orderNumber}</p>
+          <h4 className="mt-1 text-lg font-bold text-slate-900">{message.metadata.destination}</h4>
+          <p className="mt-2 text-sm text-slate-500">
+            {warehouseShipmentTypeLabel(message.metadata.shipmentType)} shipment · {message.metadata.itemsCount || 1} item{Number(message.metadata.itemsCount || 1) === 1 ? "" : "s"}
+          </p>
+        </div>
+        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-[#2D8EFF]">{message.metadata.statusLabel}</span>
+      </div>
+      <div className="mt-4 grid grid-cols-4 gap-2">
+        {message.metadata.steps.map((step, index) => {
+          const active = shipmentStepIsActive(message.metadata.status, message.metadata.currentStep, index);
+          return (
+            <div key={step} className={`rounded-xl px-3 py-2 text-center text-xs font-bold ${active ? "bg-[#E8F2FF] text-[#2D8EFF]" : "bg-slate-100 text-slate-400"}`}>
+              {step}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-4 text-sm text-slate-500">Estimated delivery: {formatDate(message.metadata.estimatedDelivery)}</p>
+      {latestStatusUpdate ? (
+        <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-3 text-xs text-slate-500">
+          Last update: {warehouseStatusLabel(latestStatusUpdate.status)} · {formatDateTime(latestStatusUpdate.changedAt)}
+          {latestStatusUpdate.actor?.name ? ` · ${latestStatusUpdate.actor.name}` : ""}
+          {latestStatusUpdate.note ? ` · ${latestStatusUpdate.note}` : ""}
+        </div>
+      ) : null}
+      {canManage ? (
+        <div className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Status</span>
+            <select
+              value={selectedStatus}
+              onChange={(event) => setSelectedStatus(event.target.value)}
+              className="mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+            >
+              {WAREHOUSE_SHIPMENT_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedStatus === "delivered" && message.metadata.currentStep < SHIPMENT_STEPS.length - 1 ? (
+            <button
+              type="button"
+              onClick={() => onMarkDelivered(message)}
+              className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-bold text-white shadow-sm"
+            >
+              {statusSubmitting ? "Saving..." : "Mark Delivered"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleUpdateStatus}
+              disabled={statusSubmitting || selectedStatus === (message.metadata.status || "dispatched")}
+              className="rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {statusSubmitting ? "Saving..." : "Update status"}
+            </button>
+          )}
+        </div>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function WarehouseAnalyticsPanel({
+  summary = null,
+  products = [],
+  orders = [],
+  alerts = [],
+  purchaseOrders = [],
+  inventoryValueReport = null,
+  financeVendors = [],
+  metrics = [],
+  onSelectMetric,
+  bridgePanel = null,
+  canManageStock = false,
+  onAdjustStock = null,
+  onSaveProduct = null,
+  onLoadProductMovementReview = null,
+  canManageShipments = false,
+  onUpdateShipmentStatus = null,
+  onLoadShipmentReview = null,
+  onSavePurchaseOrder = null,
+  onSendPurchaseOrder = null,
+  onReceivePurchaseOrder = null,
+  onCancelPurchaseOrder = null,
+  onOpenFinanceExpense = null,
+  workspaceDefaultCurrency = "USD"
+}) {
+  const [stockAdjustmentDraft, setStockAdjustmentDraft] = useState({
+    productId: "",
+    quantityDelta: "",
+    movementType: "received",
+    note: ""
+  });
+  const [stockAdjustmentSubmitting, setStockAdjustmentSubmitting] = useState(false);
+  const [selectedReviewProductId, setSelectedReviewProductId] = useState("");
+  const [productMovementReview, setProductMovementReview] = useState(null);
+  const [productMovementLoading, setProductMovementLoading] = useState(false);
+  const [productMovementError, setProductMovementError] = useState("");
+  const [shipmentStatusDrafts, setShipmentStatusDrafts] = useState({});
+  const [shipmentStatusSavingId, setShipmentStatusSavingId] = useState("");
+  const [selectedShipmentReviewId, setSelectedShipmentReviewId] = useState("");
+  const [shipmentReview, setShipmentReview] = useState(null);
+  const [shipmentReviewLoading, setShipmentReviewLoading] = useState(false);
+  const [shipmentReviewError, setShipmentReviewError] = useState("");
+  const [catalogDraft, setCatalogDraft] = useState({
+    id: "",
+    name: "",
+    sku: "",
+    unitCost: "",
+    currency: workspaceDefaultCurrency || "USD",
+    currentStock: "",
+    reorderThreshold: "",
+    reorderQuantity: ""
+  });
+  const [catalogSubmitting, setCatalogSubmitting] = useState(false);
+  const [purchaseOrderDraft, setPurchaseOrderDraft] = useState({
+    id: "",
+    vendorId: "",
+    vendorName: "",
+    expectedDeliveryDate: "",
+    notes: "",
+    currency: workspaceDefaultCurrency || "USD",
+    lineItems: [
+      {
+        id: uid("po-line"),
+        itemId: "",
+        itemName: "",
+        sku: "",
+        quantity: "",
+        unitCost: "",
+        currency: workspaceDefaultCurrency || "USD"
+      }
+    ]
+  });
+  const [purchaseOrderSubmitting, setPurchaseOrderSubmitting] = useState(false);
+  const [selectedPurchaseOrderId, setSelectedPurchaseOrderId] = useState("");
+  const [purchaseOrderActionId, setPurchaseOrderActionId] = useState("");
+  const [receiveLineDrafts, setReceiveLineDrafts] = useState({});
+  const lowStockAlerts = alerts.length
+    ? alerts
+    : (summary?.stockAlerts?.length
+        ? summary.stockAlerts.map(mapWarehouseAlertRecord)
+        : products
+            .filter(isWarehouseLowStock)
+            .map((product) => ({
+              id: product.id,
+              itemId: product.id,
+              productId: product.id,
+              itemName: product.name,
+              name: product.name,
+              sku: product.sku,
+              currentStock: Number(product.currentStock || 0),
+              reorderThreshold: getWarehouseReorderThreshold(product),
+              reorderQuantity: Number(product.reorderQuantity || 0),
+              unit: product.unit || "units",
+              warehouseLocation: ""
+            }))
+      ).sort((left, right) => {
+        const leftRatio = left.reorderThreshold > 0 ? left.currentStock / left.reorderThreshold : Number.MAX_SAFE_INTEGER;
+        const rightRatio = right.reorderThreshold > 0 ? right.currentStock / right.reorderThreshold : Number.MAX_SAFE_INTEGER;
+        if (leftRatio !== rightRatio) {
+          return leftRatio - rightRatio;
+        }
+        return left.currentStock - right.currentStock;
+      });
+  const lowStockProducts = summary?.lowStockProducts?.length
+    ? summary.lowStockProducts
+    : products
+        .filter(isWarehouseLowStock)
+        .map((product) => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          itemType: product.itemType || "inventory",
+          unit: product.unit || "units",
+          currentStock: Number(product.currentStock || 0),
+          minimumStock: Number(product.minimumStock || 0),
+          reorderThreshold: getWarehouseReorderThreshold(product),
+          reorderQuantity: Number(product.reorderQuantity || 0),
+          stockGap: Number(product.stockGap || Math.max(0, getWarehouseReorderThreshold(product) - Number(product.currentStock || 0)))
+        }))
+        .sort((left, right) => right.stockGap - left.stockGap)
+        .slice(0, 6);
+  const recentShipmentActivity = summary?.recentShipmentActivity?.length
+    ? summary.recentShipmentActivity
+    : [...orders]
+        .sort((left, right) => new Date(right.updatedAt || right.createdAt).getTime() - new Date(left.updatedAt || left.createdAt).getTime())
+        .slice(0, 6);
+  const mostActiveProducts = summary?.mostActiveProducts?.length
+    ? summary.mostActiveProducts
+    : [...products]
+        .sort((left, right) => new Date(right.updatedAt || right.createdAt).getTime() - new Date(left.updatedAt || left.createdAt).getTime())
+        .slice(0, 5);
+  const recentStockMovements = Array.isArray(summary?.recentStockMovements) ? summary.recentStockMovements : [];
+  const warehouseHandoffCues = Array.isArray(summary?.warehouseHandoffCues) ? summary.warehouseHandoffCues : [];
+  const productStatusBreakdown = summary?.productStatusBreakdown || products.reduce((accumulator, product) => {
+    const status = product.productStatus || "active";
+    accumulator[status] = (accumulator[status] || 0) + 1;
+    return accumulator;
+  }, { active: 0, paused: 0, discontinued: 0 });
+  const selectedAdjustmentProduct = products.find((product) => product.id === stockAdjustmentDraft.productId) || null;
+  const canReviewProductMovement = Boolean(onLoadProductMovementReview);
+  const canReviewShipment = Boolean(onLoadShipmentReview);
+  const selectedReviewProduct =
+    productMovementReview?.product ||
+    products.find((product) => product.id === selectedReviewProductId) ||
+    null;
+  const selectedPurchaseOrder =
+    purchaseOrders.find((order) => order.id === selectedPurchaseOrderId) ||
+    purchaseOrders[0] ||
+    null;
+
+  useEffect(() => {
+    if (!selectedPurchaseOrderId && purchaseOrders[0]?.id) {
+      setSelectedPurchaseOrderId(purchaseOrders[0].id);
+    } else if (selectedPurchaseOrderId && !purchaseOrders.some((order) => order.id === selectedPurchaseOrderId)) {
+      setSelectedPurchaseOrderId(purchaseOrders[0]?.id || "");
+    }
+  }, [purchaseOrders, selectedPurchaseOrderId]);
+
+  async function handleSubmitStockAdjustment(event) {
+    event.preventDefault();
+    if (!onAdjustStock || !selectedAdjustmentProduct) {
+      return;
+    }
+
+    const quantityDelta = Number.parseFloat(stockAdjustmentDraft.quantityDelta);
+    if (!Number.isFinite(quantityDelta) || quantityDelta === 0) {
+      return;
+    }
+
+    setStockAdjustmentSubmitting(true);
+    const ok = await onAdjustStock(selectedAdjustmentProduct, {
+      quantityDelta,
+      movementType: stockAdjustmentDraft.movementType,
+      note: stockAdjustmentDraft.note
+    });
+    setStockAdjustmentSubmitting(false);
+
+    if (ok) {
+      setStockAdjustmentDraft((current) => ({
+        ...current,
+        quantityDelta: "",
+        note: ""
+      }));
+    }
+  }
+
+  async function openProductMovementReview(productId) {
+    if (!productId || !onLoadProductMovementReview) {
+      return;
+    }
+
+    setSelectedReviewProductId(productId);
+    setProductMovementLoading(true);
+    setProductMovementError("");
+    try {
+      const payload = await onLoadProductMovementReview(productId);
+      setProductMovementReview(payload || null);
+    } catch (error) {
+      setProductMovementReview(null);
+      setProductMovementError(error?.message || "Unable to load product movement review.");
+    } finally {
+      setProductMovementLoading(false);
+    }
+  }
+
+  async function handleShipmentStatusSave(order, nextStatus) {
+    if (!onUpdateShipmentStatus || !order?.id || !nextStatus) {
+      return;
+    }
+
+    setShipmentStatusSavingId(order.id);
+    try {
+      await onUpdateShipmentStatus(order, nextStatus);
+    } finally {
+      setShipmentStatusSavingId("");
+    }
+  }
+
+  async function openShipmentReview(orderId) {
+    if (!orderId || !onLoadShipmentReview) {
+      return;
+    }
+
+    setSelectedShipmentReviewId(orderId);
+    setShipmentReviewLoading(true);
+    setShipmentReviewError("");
+    try {
+      const payload = await onLoadShipmentReview(orderId);
+      setShipmentReview(payload || null);
+    } catch (error) {
+      setShipmentReview(null);
+      setShipmentReviewError(error?.message || "Unable to load shipment review.");
+    } finally {
+      setShipmentReviewLoading(false);
+    }
+  }
+
+  function hydrateCatalogDraft(product = null) {
+    if (!product) {
+      setCatalogDraft({
+        id: "",
+        name: "",
+        sku: "",
+        unitCost: "",
+        currency: workspaceDefaultCurrency || "USD",
+        currentStock: "",
+        reorderThreshold: "",
+        reorderQuantity: ""
+      });
+      return;
+    }
+
+    setCatalogDraft({
+      id: product.id,
+      name: product.name || "",
+      sku: product.sku || "",
+      unitCost: String(product.unitCost ?? ""),
+      currency: product.currency || workspaceDefaultCurrency || "USD",
+      currentStock: String(product.currentStock ?? ""),
+      reorderThreshold: String(getWarehouseReorderThreshold(product) ?? ""),
+      reorderQuantity: String(product.reorderQuantity ?? "")
+    });
+  }
+
+  async function handleSaveCatalogItem(event) {
+    event.preventDefault();
+    if (!onSaveProduct) {
+      return;
+    }
+
+    setCatalogSubmitting(true);
+    const saved = await onSaveProduct(catalogDraft);
+    setCatalogSubmitting(false);
+    if (saved) {
+      hydrateCatalogDraft(null);
+    }
+  }
+
+  function buildPurchaseOrderLineDraft(lineItem = {}) {
+    return {
+      id: lineItem.id || uid("po-line"),
+      itemId: lineItem.itemId || "",
+      itemName: lineItem.itemName || "",
+      sku: lineItem.sku || "",
+      quantity: lineItem.quantity != null ? String(lineItem.quantity) : "",
+      unitCost: lineItem.unitCost != null ? String(lineItem.unitCost) : "",
+      currency: lineItem.currency || workspaceDefaultCurrency || "USD"
+    };
+  }
+
+  function hydratePurchaseOrderDraft(order = null, prefilledLineItems = null) {
+    if (!order) {
+      setPurchaseOrderDraft({
+        id: "",
+        vendorId: "",
+        vendorName: "",
+        expectedDeliveryDate: "",
+        notes: "",
+        currency: workspaceDefaultCurrency || "USD",
+        lineItems: prefilledLineItems?.length
+          ? prefilledLineItems.map((lineItem) => buildPurchaseOrderLineDraft(lineItem))
+          : [buildPurchaseOrderLineDraft()]
+      });
+      return;
+    }
+
+    setPurchaseOrderDraft({
+      id: order.id,
+      vendorId: order.vendorId || "",
+      vendorName: order.vendorName || "",
+      expectedDeliveryDate: order.expectedDeliveryDate ? String(order.expectedDeliveryDate).slice(0, 10) : "",
+      notes: order.notes || "",
+      currency: order.currency || workspaceDefaultCurrency || "USD",
+      lineItems: (order.lineItems || []).length
+        ? order.lineItems.map((lineItem) => buildPurchaseOrderLineDraft(lineItem))
+        : [buildPurchaseOrderLineDraft()]
+    });
+  }
+
+  function handlePrefillPurchaseOrderFromAlert(alert) {
+    const product = products.find((entry) => entry.id === alert.productId || entry.id === alert.itemId);
+    hydratePurchaseOrderDraft(null, [
+      {
+        itemId: product?.id || alert.productId || alert.itemId || "",
+        itemName: product?.name || alert.itemName || alert.name || "",
+        sku: product?.sku || alert.sku || "",
+        quantity: alert.reorderQuantity || "",
+        unitCost: product?.unitCost != null ? String(product.unitCost) : "",
+        currency: product?.currency || alert.currency || workspaceDefaultCurrency || "USD"
+      }
+    ]);
+  }
+
+  function updatePurchaseOrderLine(lineId, updater) {
+    setPurchaseOrderDraft((current) => ({
+      ...current,
+      lineItems: current.lineItems.map((lineItem) => (lineItem.id === lineId ? updater(lineItem) : lineItem))
+    }));
+  }
+
+  async function handleSubmitPurchaseOrder(event) {
+    event.preventDefault();
+    if (!onSavePurchaseOrder) {
+      return;
+    }
+
+    setPurchaseOrderSubmitting(true);
+    const saved = await onSavePurchaseOrder(purchaseOrderDraft);
+    setPurchaseOrderSubmitting(false);
+    if (saved?.id) {
+      setSelectedPurchaseOrderId(saved.id);
+      hydratePurchaseOrderDraft(null);
+    }
+  }
+
+  async function handlePurchaseOrderAction(action, order, payload = null) {
+    if (!order?.id) {
+      return;
+    }
+
+    const actionMap = {
+      send: onSendPurchaseOrder,
+      receive: onReceivePurchaseOrder,
+      cancel: onCancelPurchaseOrder
+    };
+    const handler = actionMap[action];
+    if (!handler) {
+      return;
+    }
+
+    setPurchaseOrderActionId(`${action}:${order.id}`);
+    const updated = await handler(order, payload);
+    setPurchaseOrderActionId("");
+    if (updated?.id) {
+      setSelectedPurchaseOrderId(updated.id);
+      setReceiveLineDrafts({});
+    }
+  }
+
+  return (
+    <div className="workspace-overview-shell flex-1 overflow-y-auto px-6 py-6">
+      <div className="mb-4">
+        <h3 className="text-xl font-bold text-slate-900">Warehouse analytics</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          Track low stock, shipment movement, and the products that need warehouse attention first.
+        </p>
+      </div>
+      {bridgePanel ? <div className="mb-6">{bridgePanel}</div> : null}
+      <div className="grid gap-4 md:grid-cols-2">
+        {metrics.map((metric) => (
+          <StatCard key={metric.id} metric={metric} onSelect={onSelectMetric} />
+        ))}
+      </div>
+      {warehouseHandoffCues.length ? (
+        <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Operational handoff</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Reorder and shipment cues</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Spot when stock pressure and shipment timing are starting to affect each other.
+          </p>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {warehouseHandoffCues.map((cue) => (
+              <button
+                key={cue.id}
+                type="button"
+                onClick={() => cue.targetMetricId && onSelectMetric?.(metrics.find((metric) => metric.id === cue.targetMetricId) || { id: cue.targetMetricId, label: cue.title, value: "", subvalue: "" })}
+                className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-left transition hover:border-[#2D8EFF]"
+              >
+                <div
+                  className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                    cue.signal === "risk" ? "text-rose-600" : cue.signal === "attention" ? "text-amber-600" : "text-sky-600"
+                  }`}
+                >
+                  {cue.signal === "risk" ? "Risk" : cue.signal === "attention" ? "Attention" : "Watch"}
+                </div>
+                <div className="mt-2 text-sm font-semibold text-slate-900">{cue.title}</div>
+                <div className="mt-2 text-xs leading-5 text-slate-500">{cue.detail}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Stock attention</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Low stock and reorder queue</h3>
+          <div className="mt-5 space-y-3">
+            {lowStockProducts.length ? lowStockProducts.map((product) => (
+              <div key={product.id} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{product.name}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {product.sku} · {product.itemType || "inventory"} · {product.currentStock} {product.unit || "units"} on hand
+                    </div>
+                    {product.latestMovement ? (
+                      <div className="mt-2 text-xs text-slate-500">
+                        Last change {formatWarehouseQuantityDelta(product.latestMovement.quantityDelta, product.unit || "units")} · {formatDateTime(product.latestMovement.createdAt)}
+                      </div>
+                    ) : null}
+                    <div className="mt-2 text-xs text-slate-500">
+                      Threshold {product.reorderThreshold || product.minimumStock} · reorder {product.reorderQuantity || 0} {product.unit || "units"}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-600">Gap {product.stockGap}</div>
+                    <div className="mt-1 text-xs text-slate-500">Reorder {product.reorderQuantity}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canReviewProductMovement ? (
+                    <button
+                      type="button"
+                      onClick={() => openProductMovementReview(product.id)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                    >
+                      Review movement
+                    </button>
+                  ) : null}
+                  {canManageStock ? (
+                    <button
+                      type="button"
+                      onClick={() => setStockAdjustmentDraft((current) => ({
+                        ...current,
+                        productId: product.id,
+                        movementType: "received"
+                      }))}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                    >
+                      Add stock
+                    </button>
+                  ) : null}
+                  {canManageStock && onSavePurchaseOrder ? (
+                    <button
+                      type="button"
+                      onClick={() => handlePrefillPurchaseOrderFromAlert(product)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                    >
+                      Create PO
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No low stock products need action right now.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="grid gap-6">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Catalog setup</div>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">Item thresholds</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              Set reorder thresholds and preferred reorder quantities without leaving Warehouse.
+            </p>
+            {canManageStock && onSaveProduct ? (
+              <form className="mt-5 space-y-3" onSubmit={handleSaveCatalogItem}>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Edit existing item</span>
+                  <select
+                    value={catalogDraft.id}
+                    onChange={(event) => hydrateCatalogDraft(products.find((product) => product.id === event.target.value) || null)}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  >
+                    <option value="">Create new catalog item</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} ({product.sku})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Item name</span>
+                    <input
+                      type="text"
+                      value={catalogDraft.name}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">SKU</span>
+                    <input
+                      type="text"
+                      value={catalogDraft.sku}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, sku: event.target.value.toUpperCase() }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Unit cost</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={catalogDraft.unitCost}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, unitCost: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Currency</span>
+                    <select
+                      value={catalogDraft.currency}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, currency: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    >
+                      {FINANCE_CURRENCY_OPTIONS.map((currencyCode) => (
+                        <option key={currencyCode} value={currencyCode}>{currencyCode}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current stock</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={catalogDraft.currentStock}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, currentStock: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Reorder threshold</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={catalogDraft.reorderThreshold}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, reorderThreshold: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Reorder quantity</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={catalogDraft.reorderQuantity}
+                      onChange={(event) => setCatalogDraft((current) => ({ ...current, reorderQuantity: event.target.value }))}
+                      className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    disabled={catalogSubmitting}
+                    className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {catalogSubmitting ? "Saving..." : catalogDraft.id ? "Update item" : "Create item"}
+                  </button>
+                  {catalogDraft.id ? (
+                    <button
+                      type="button"
+                      onClick={() => hydrateCatalogDraft(null)}
+                      className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                    >
+                      New item
+                    </button>
+                  ) : null}
+                </div>
+              </form>
+            ) : (
+              <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                Warehouse managers can configure item thresholds here.
+              </div>
+            )}
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Product status</div>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">Catalog health</h3>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              {[
+                ["Active", productStatusBreakdown.active || 0],
+                ["Paused", productStatusBreakdown.paused || 0],
+                ["Discontinued", productStatusBreakdown.discontinued || 0]
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</div>
+                  <div className="mt-3 text-2xl font-bold text-slate-900">{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Shipment movement</div>
+            <h3 className="mt-2 text-xl font-bold text-slate-900">Recent shipment activity</h3>
+            <div className="mt-5 space-y-3">
+              {recentShipmentActivity.length ? recentShipmentActivity.map((order) => (
+                <div key={order.id} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{order.orderNumber}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {warehouseShipmentTypeLabel(order.shipmentType)} · {order.itemsCount || 1} item{Number(order.itemsCount || 1) === 1 ? "" : "s"}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">{order.destination}</div>
+                      {order.lastStatusUpdate ? (
+                        <div className="mt-2 text-xs text-slate-500">
+                          Last update {formatDateTime(order.lastStatusUpdate.changedAt)}
+                          {order.lastStatusUpdate.actor?.name ? ` · ${order.lastStatusUpdate.actor.name}` : ""}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-right">
+                      <div className="text-sm font-semibold text-[#2D8EFF]">{warehouseStatusLabel(order.status)}</div>
+                      <div className="mt-1 text-xs text-slate-500">{formatDate(order.estimatedDelivery)}</div>
+                    </div>
+                  </div>
+                  {canManageShipments ? (
+                    <div className="mt-3 flex flex-wrap items-end gap-2">
+                      <select
+                        value={shipmentStatusDrafts[order.id] || order.status}
+                        onChange={(event) => setShipmentStatusDrafts((current) => ({ ...current, [order.id]: event.target.value }))}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                      >
+                        {WAREHOUSE_SHIPMENT_STATUS_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleShipmentStatusSave(order, shipmentStatusDrafts[order.id] || order.status)}
+                        disabled={shipmentStatusSavingId === order.id || (shipmentStatusDrafts[order.id] || order.status) === order.status}
+                        className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {shipmentStatusSavingId === order.id ? "Saving..." : "Update"}
+                      </button>
+                    </div>
+                  ) : null}
+                  {canReviewShipment ? (
+                    <button
+                      type="button"
+                      onClick={() => openShipmentReview(order.id)}
+                      className="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                    >
+                      Review shipment
+                    </button>
+                  ) : null}
+                </div>
+              )) : (
+                <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                  No shipment activity is available yet.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Stock alerts</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Low stock alerts</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Threshold-driven alerts sorted by the most critical stock gaps first.
+          </p>
+          <div className="mt-5 space-y-3">
+            {lowStockAlerts.length ? lowStockAlerts.map((alert) => (
+              <div key={alert.id} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{alert.itemName}</div>
+                    <div className="mt-1 text-xs text-slate-500">{alert.sku} · {alert.currentStock} {alert.unit}</div>
+                    <div className="mt-2 text-xs text-slate-500">
+                      Threshold {alert.reorderThreshold} · reorder {alert.reorderQuantity || 0}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-rose-600">
+                      Gap {Math.max(0, Number(alert.reorderThreshold || 0) - Number(alert.currentStock || 0))}
+                    </div>
+                  </div>
+                </div>
+                {canManageStock && onSavePurchaseOrder ? (
+                  <button
+                    type="button"
+                    onClick={() => handlePrefillPurchaseOrderFromAlert(alert)}
+                    className="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                  >
+                    Create PO
+                  </button>
+                ) : null}
+              </div>
+            )) : (
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No threshold alerts are active right now.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Purchase orders</div>
+              <h3 className="mt-2 text-xl font-bold text-slate-900">Warehouse purchasing</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Turn stock pressure into vendor orders and receive them back into inventory.
+              </p>
+            </div>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
+              {purchaseOrders.length} order{purchaseOrders.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div className="mt-5 grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+            <form className="space-y-3" onSubmit={handleSubmitPurchaseOrder}>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Edit draft</span>
+                <select
+                  value={purchaseOrderDraft.id}
+                  onChange={(event) => hydratePurchaseOrderDraft(purchaseOrders.find((order) => order.id === event.target.value) || null)}
+                  className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                >
+                  <option value="">Create new purchase order</option>
+                  {purchaseOrders.filter((order) => order.status === "draft").map((order) => (
+                    <option key={order.id} value={order.id}>
+                      {order.orderNumber} · {order.vendorName || "Vendor"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Vendor</span>
+                  <select
+                    value={purchaseOrderDraft.vendorId}
+                    onChange={(event) => {
+                      const vendor = financeVendors.find((entry) => entry.id === event.target.value) || null;
+                      setPurchaseOrderDraft((current) => ({
+                        ...current,
+                        vendorId: event.target.value,
+                        vendorName: vendor?.name || current.vendorName
+                      }));
+                    }}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  >
+                    <option value="">Select vendor</option>
+                    {financeVendors.map((vendor) => (
+                      <option key={vendor.id} value={vendor.id}>
+                        {vendor.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Vendor name</span>
+                  <input
+                    type="text"
+                    value={purchaseOrderDraft.vendorName}
+                    onChange={(event) => setPurchaseOrderDraft((current) => ({ ...current, vendorName: event.target.value }))}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    placeholder="Vendor name"
+                  />
+                </label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Expected delivery</span>
+                  <input
+                    type="date"
+                    value={purchaseOrderDraft.expectedDeliveryDate}
+                    onChange={(event) => setPurchaseOrderDraft((current) => ({ ...current, expectedDeliveryDate: event.target.value }))}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Currency</span>
+                  <select
+                    value={purchaseOrderDraft.currency}
+                    onChange={(event) => setPurchaseOrderDraft((current) => ({
+                      ...current,
+                      currency: event.target.value,
+                      lineItems: current.lineItems.map((lineItem) => ({ ...lineItem, currency: event.target.value }))
+                    }))}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  >
+                    {FINANCE_CURRENCY_OPTIONS.map((currency) => (
+                      <option key={currency} value={currency}>{currency}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Notes</span>
+                <textarea
+                  rows={3}
+                  value={purchaseOrderDraft.notes}
+                  onChange={(event) => setPurchaseOrderDraft((current) => ({ ...current, notes: event.target.value }))}
+                  className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                />
+              </label>
+              <div className="space-y-3">
+                {purchaseOrderDraft.lineItems.map((lineItem, index) => (
+                  <div key={lineItem.id} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Line item {index + 1}</div>
+                      {purchaseOrderDraft.lineItems.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={() => setPurchaseOrderDraft((current) => ({
+                            ...current,
+                            lineItems: current.lineItems.filter((entry) => entry.id !== lineItem.id)
+                          }))}
+                          className="text-xs font-semibold text-rose-600"
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Warehouse item</span>
+                        <select
+                          value={lineItem.itemId}
+                          onChange={(event) => {
+                            const product = products.find((entry) => entry.id === event.target.value) || null;
+                            updatePurchaseOrderLine(lineItem.id, (current) => ({
+                              ...current,
+                              itemId: event.target.value,
+                              itemName: product?.name || current.itemName,
+                              sku: product?.sku || current.sku
+                            }));
+                          }}
+                          className="mt-2 w-full rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                        >
+                          <option value="">Select item</option>
+                          {products.map((product) => (
+                            <option key={product.id} value={product.id}>
+                              {product.name} ({product.sku})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Item name</span>
+                        <input
+                          type="text"
+                          value={lineItem.itemName}
+                          onChange={(event) => updatePurchaseOrderLine(lineItem.id, (current) => ({ ...current, itemName: event.target.value }))}
+                          className="mt-2 w-full rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">SKU</span>
+                        <input
+                          type="text"
+                          value={lineItem.sku}
+                          onChange={(event) => updatePurchaseOrderLine(lineItem.id, (current) => ({ ...current, sku: event.target.value.toUpperCase() }))}
+                          className="mt-2 w-full rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Quantity</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={lineItem.quantity}
+                          onChange={(event) => updatePurchaseOrderLine(lineItem.id, (current) => ({ ...current, quantity: event.target.value }))}
+                          className="mt-2 w-full rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Unit cost</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={lineItem.unitCost}
+                          onChange={(event) => updatePurchaseOrderLine(lineItem.id, (current) => ({ ...current, unitCost: event.target.value }))}
+                          className="mt-2 w-full rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPurchaseOrderDraft((current) => ({
+                    ...current,
+                    lineItems: [...current.lineItems, buildPurchaseOrderLineDraft({ currency: current.currency || workspaceDefaultCurrency || "USD" })]
+                  }))}
+                  className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                >
+                  Add line item
+                </button>
+                <button
+                  type="submit"
+                  disabled={purchaseOrderSubmitting}
+                  className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {purchaseOrderSubmitting ? "Saving..." : purchaseOrderDraft.id ? "Update PO" : "Create PO"}
+                </button>
+                {purchaseOrderDraft.id ? (
+                  <button
+                    type="button"
+                    onClick={() => hydratePurchaseOrderDraft(null)}
+                    className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    New PO
+                  </button>
+                ) : null}
+              </div>
+            </form>
+            <div className="space-y-4">
+              <div className="space-y-3">
+                {purchaseOrders.length ? purchaseOrders.map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    onClick={() => setSelectedPurchaseOrderId(order.id)}
+                    className={`w-full rounded-[18px] border px-4 py-4 text-left transition ${
+                      selectedPurchaseOrder?.id === order.id ? "border-[#2D8EFF] bg-blue-50" : "border-slate-200 bg-slate-50 hover:border-[#2D8EFF]"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{order.orderNumber}</div>
+                        <div className="mt-1 text-xs text-slate-500">{order.vendorName || "Vendor not set"}</div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {order.lineItems.length} line{order.lineItems.length === 1 ? "" : "s"} · {order.mixedCurrency ? formatMoneyDisplay(order.totalsByCurrency || {}) : formatMoney(order.totalAmount, order.currency)}
+                        </div>
+                      </div>
+                      <span className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] ${
+                        order.status === "received"
+                          ? "bg-emerald-100 text-emerald-700"
+                          : order.status === "partially_received"
+                            ? "bg-amber-100 text-amber-700"
+                            : order.status === "cancelled"
+                              ? "bg-slate-200 text-slate-600"
+                              : "bg-sky-100 text-sky-700"
+                      }`}>
+                        {formatPurchaseOrderStatusLabel(order.status)}
+                      </span>
+                    </div>
+                  </button>
+                )) : (
+                  <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                    No purchase orders yet.
+                  </div>
+                )}
+              </div>
+              {selectedPurchaseOrder ? (
+                <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{selectedPurchaseOrder.orderNumber}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {selectedPurchaseOrder.vendorName || "Vendor not set"} · {selectedPurchaseOrder.mixedCurrency ? formatMoneyDisplay(selectedPurchaseOrder.totalsByCurrency || {}) : formatMoney(selectedPurchaseOrder.totalAmount, selectedPurchaseOrder.currency)}
+                      </div>
+                      {selectedPurchaseOrder.mixedCurrency ? (
+                        <div className="mt-2 text-xs text-slate-500">
+                          Approx. order total in {selectedPurchaseOrder.currency}: {formatMoney(selectedPurchaseOrder.totalAmount, selectedPurchaseOrder.currency)}
+                        </div>
+                      ) : null}
+                      {selectedPurchaseOrder.expectedDeliveryDate ? (
+                        <div className="mt-2 text-xs text-slate-500">
+                          Expected {formatDate(selectedPurchaseOrder.expectedDeliveryDate)}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="text-right text-xs text-slate-500">
+                      {selectedPurchaseOrder.financeExpense ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenFinanceExpense?.(selectedPurchaseOrder.financeExpense)}
+                          className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700"
+                        >
+                          Expense created: {formatMoney(selectedPurchaseOrder.financeExpense.amount, selectedPurchaseOrder.financeExpense.currency)} · {selectedPurchaseOrder.financeExpense.status}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {selectedPurchaseOrder.notes ? <div className="mt-3 text-sm text-slate-600">{selectedPurchaseOrder.notes}</div> : null}
+                  <div className="mt-4 space-y-3">
+                    {selectedPurchaseOrder.lineItems.map((lineItem) => {
+                      const remaining = Math.max(0, Number(lineItem.quantity || 0) - Number(lineItem.receivedQuantity || 0));
+                      return (
+                        <div key={lineItem.id} className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{lineItem.itemName}</div>
+                              <div className="mt-1 text-xs text-slate-500">{lineItem.sku} · {lineItem.quantity} units @ {formatMoney(lineItem.unitCost, lineItem.currency)}</div>
+                              {Number(lineItem.taxAmount || 0) > 0 ? (
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Tax {formatMoney(lineItem.taxAmount || 0, lineItem.currency)} · line total {formatMoney(lineItem.lineTotalWithTax || lineItem.lineTotal || 0, lineItem.currency)}
+                                </div>
+                              ) : null}
+                              <div className="mt-2 text-xs text-slate-500">
+                                Received {lineItem.receivedQuantity} / {lineItem.quantity}
+                              </div>
+                            </div>
+                            {["sent", "acknowledged", "partially_received"].includes(selectedPurchaseOrder.status) && remaining > 0 ? (
+                              <label className="block text-right">
+                                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Receive</span>
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  max={remaining}
+                                  value={receiveLineDrafts[lineItem.id] ?? ""}
+                                  onChange={(event) => setReceiveLineDrafts((current) => ({ ...current, [lineItem.id]: event.target.value }))}
+                                  className="mt-2 w-24 rounded-[12px] border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                                />
+                              </label>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {selectedPurchaseOrder.status === "draft" ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => hydratePurchaseOrderDraft(selectedPurchaseOrder)}
+                          className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                        >
+                          Edit draft
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePurchaseOrderAction("send", selectedPurchaseOrder)}
+                          disabled={purchaseOrderActionId === `send:${selectedPurchaseOrder.id}`}
+                          className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {purchaseOrderActionId === `send:${selectedPurchaseOrder.id}` ? "Sending..." : "Send"}
+                        </button>
+                      </>
+                    ) : null}
+                    {["draft", "sent"].includes(selectedPurchaseOrder.status) ? (
+                      <button
+                        type="button"
+                        onClick={() => handlePurchaseOrderAction("cancel", selectedPurchaseOrder)}
+                        disabled={purchaseOrderActionId === `cancel:${selectedPurchaseOrder.id}`}
+                        className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {purchaseOrderActionId === `cancel:${selectedPurchaseOrder.id}` ? "Cancelling..." : "Cancel"}
+                      </button>
+                    ) : null}
+                    {["sent", "acknowledged", "partially_received"].includes(selectedPurchaseOrder.status) ? (
+                      <button
+                        type="button"
+                        onClick={() => handlePurchaseOrderAction(
+                          "receive",
+                          selectedPurchaseOrder,
+                          selectedPurchaseOrder.lineItems.map((lineItem) => ({
+                            lineItemId: lineItem.id,
+                            receivedQuantity: receiveLineDrafts[lineItem.id] || 0
+                          }))
+                        )}
+                        disabled={purchaseOrderActionId === `receive:${selectedPurchaseOrder.id}`}
+                        className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {purchaseOrderActionId === `receive:${selectedPurchaseOrder.id}` ? "Receiving..." : "Receive items"}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Inventory value</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Inventory value by category</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Track working capital in stock, grouped by category and highlighted where low stock is already affecting inventory value.
+          </p>
+          <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Total inventory value</div>
+            <div className="mt-2 text-lg font-semibold text-slate-900">
+              {formatMoneyDisplay(inventoryValueReport?.totals || {})}
+            </div>
+          </div>
+          <div className="mt-4 space-y-3">
+            {(inventoryValueReport?.categories || []).length ? (
+              inventoryValueReport.categories.map((categoryEntry) => (
+                <div key={categoryEntry.category} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-slate-900">{categoryEntry.category}</div>
+                    <div className="text-sm font-semibold text-slate-700">{formatMoneyDisplay(categoryEntry.totals || {})}</div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No inventory value data yet.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Stock movement</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Recent stock changes</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            See what changed, by how much, and why inventory moved across the workspace.
+          </p>
+          <div className="mt-5 space-y-3">
+            {recentStockMovements.length ? recentStockMovements.map((movement) => {
+              const positiveChange = Number(movement.quantityDelta || 0) > 0;
+              return (
+                <div key={movement.id} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">{movement.productName}</div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {movement.sku} · {movement.movementLabel || warehouseMovementTypeLabel(movement.movementType)}
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        {movement.actor?.name || "Warehouse teammate"} · {formatDateTime(movement.createdAt)}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {formatWarehouseQuantity(movement.previousStock)} {movement.unit} → {formatWarehouseQuantity(movement.resultingStock)} {movement.unit}
+                      </div>
+                      {movement.note ? <div className="mt-2 text-xs text-slate-500">{movement.note}</div> : null}
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-semibold ${positiveChange ? "text-emerald-600" : "text-rose-600"}`}>
+                        {formatWarehouseQuantityDelta(movement.quantityDelta, movement.unit)}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {movement.sourceType === "product_create"
+                          ? "Product added"
+                          : movement.sourceType === "product_update"
+                            ? "Catalog update"
+                            : "Manual update"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            }) : (
+              <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+                No stock movement is recorded yet.
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Stock actions</div>
+          <h3 className="mt-2 text-xl font-bold text-slate-900">Adjust inventory</h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Record received stock, manual adjustments, or stock reductions without leaving the Warehouse view.
+          </p>
+          {canManageStock && products.length ? (
+            <form className="mt-5 space-y-3" onSubmit={handleSubmitStockAdjustment}>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Product</span>
+                <select
+                  value={stockAdjustmentDraft.productId}
+                  onChange={(event) => setStockAdjustmentDraft((current) => ({ ...current, productId: event.target.value }))}
+                  className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                >
+                  <option value="">Select a product</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} ({product.sku})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Change type</span>
+                  <select
+                    value={stockAdjustmentDraft.movementType}
+                    onChange={(event) => setStockAdjustmentDraft((current) => ({ ...current, movementType: event.target.value }))}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  >
+                    <option value="received">Received stock</option>
+                    <option value="adjustment">Adjustment</option>
+                    <option value="fulfilled">Reduce stock</option>
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Quantity delta</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={stockAdjustmentDraft.quantityDelta}
+                    onChange={(event) => setStockAdjustmentDraft((current) => ({ ...current, quantityDelta: event.target.value }))}
+                    className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                    placeholder={stockAdjustmentDraft.movementType === "fulfilled" ? "-12" : "24"}
+                  />
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Note</span>
+                <textarea
+                  rows={3}
+                  value={stockAdjustmentDraft.note}
+                  onChange={(event) => setStockAdjustmentDraft((current) => ({ ...current, note: event.target.value }))}
+                  className="mt-2 w-full rounded-[14px] border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-900 outline-none focus:border-[#2D8EFF]"
+                  placeholder="Optional context, like damaged units, partial fulfillment, or received delivery."
+                />
+              </label>
+              <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+                Use positive numbers to add stock and negative numbers to reduce it. Fulfillment-style updates should usually be negative.
+                {selectedAdjustmentProduct ? (
+                  <div className="mt-2 text-slate-700">
+                    Current on hand: <span className="font-semibold">{formatWarehouseQuantity(selectedAdjustmentProduct.currentStock)} {selectedAdjustmentProduct.unit || "units"}</span>
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="submit"
+                disabled={stockAdjustmentSubmitting || !stockAdjustmentDraft.productId || !stockAdjustmentDraft.quantityDelta}
+                className="rounded-full bg-[#2D8EFF] px-4 py-2 text-sm font-semibold text-white shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {stockAdjustmentSubmitting ? "Saving stock change..." : "Record stock change"}
+              </button>
+            </form>
+          ) : (
+            <div className="mt-5 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+              Add products to the warehouse catalog before recording stock changes.
+            </div>
+          )}
+          <div className="mt-6 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Reorder review</div>
+            <h4 className="mt-2 text-base font-semibold text-slate-900">
+              {selectedReviewProduct ? selectedReviewProduct.name : "Pick a product to review"}
+            </h4>
+            {productMovementLoading ? (
+              <p className="mt-3 text-sm text-slate-500">Loading recent stock history...</p>
+            ) : productMovementError ? (
+              <p className="mt-3 text-sm text-rose-600">{productMovementError}</p>
+            ) : productMovementReview ? (
+              <div className="mt-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">On hand</div>
+                    <div className="mt-2 text-lg font-bold text-slate-900">
+                      {formatWarehouseQuantity(productMovementReview.product.currentStock)} {productMovementReview.product.unit || "units"}
+                    </div>
+                  </div>
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Stock gap</div>
+                    <div className="mt-2 text-lg font-bold text-slate-900">
+                      {formatWarehouseQuantity(productMovementReview.reorderReview?.stockGap || 0)}
+                    </div>
+                  </div>
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Movement mix</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900">
+                      {productMovementReview.reorderReview?.receivedCount || 0} in · {productMovementReview.reorderReview?.reducedCount || 0} out
+                    </div>
+                  </div>
+                </div>
+                {productMovementReview.reorderReview?.latestMovement ? (
+                  <div className="mt-4 rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600">
+                    Latest change: {formatWarehouseQuantityDelta(
+                      productMovementReview.reorderReview.latestMovement.quantityDelta,
+                      productMovementReview.product.unit || "units"
+                    )} on {formatDateTime(productMovementReview.reorderReview.latestMovement.createdAt)}
+                  </div>
+                ) : null}
+                <div className="mt-4 space-y-3">
+                  {productMovementReview.movements.length ? productMovementReview.movements.map((movement) => {
+                    const positiveChange = Number(movement.quantityDelta || 0) > 0;
+                    return (
+                      <div key={movement.id} className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-slate-900">{movement.movementLabel || warehouseMovementTypeLabel(movement.movementType)}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {movement.actor?.name || "Warehouse teammate"} · {formatDateTime(movement.createdAt)}
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                              {formatWarehouseQuantity(movement.previousStock)} {movement.unit} → {formatWarehouseQuantity(movement.resultingStock)} {movement.unit}
+                            </div>
+                            {movement.note ? <div className="mt-2 text-xs text-slate-500">{movement.note}</div> : null}
+                          </div>
+                          <div className={`text-sm font-semibold ${positiveChange ? "text-emerald-600" : "text-rose-600"}`}>
+                            {formatWarehouseQuantityDelta(movement.quantityDelta, movement.unit)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                      No stock movement has been recorded for this product yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">
+                Use the low-stock or product cards to inspect the recent movement that led to the current reorder signal.
+              </p>
+            )}
+          </div>
+          <div className="mt-6 rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Shipment review</div>
+            <h4 className="mt-2 text-base font-semibold text-slate-900">
+              {shipmentReview?.order?.orderNumber || "Pick a shipment to review"}
+            </h4>
+            {shipmentReviewLoading ? (
+              <p className="mt-3 text-sm text-slate-500">Loading shipment history...</p>
+            ) : shipmentReviewError ? (
+              <p className="mt-3 text-sm text-rose-600">{shipmentReviewError}</p>
+            ) : shipmentReview ? (
+              <div className="mt-3">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Status</div>
+                    <div className="mt-2 text-base font-bold text-slate-900">{warehouseStatusLabel(shipmentReview.review?.currentStatus || shipmentReview.order?.status)}</div>
+                  </div>
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Destination</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900">{shipmentReview.order?.destination}</div>
+                  </div>
+                  <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Review</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900">
+                      {shipmentReview.review?.totalStatusChanges || 0} changes · {shipmentReview.review?.delayedEvents || 0} delay{shipmentReview.review?.delayedEvents === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-600">
+                  {warehouseShipmentTypeLabel(shipmentReview.order?.shipmentType)} shipment · ETA {formatDate(shipmentReview.order?.estimatedDelivery)} ·
+                  Last progress {shipmentReview.review?.lastProgressAt ? ` ${formatDateTime(shipmentReview.review.lastProgressAt)}` : " not recorded"}
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(shipmentReview.recentHistory || []).length ? shipmentReview.recentHistory.map((entry, index) => (
+                    <div key={`${entry.changedAt || index}-${entry.status}`} className="rounded-[14px] border border-slate-200 bg-white px-3 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{warehouseStatusLabel(entry.status)}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {entry.actor?.name || "Warehouse teammate"} · {formatDateTime(entry.changedAt)}
+                          </div>
+                          {entry.note ? <div className="mt-2 text-xs text-slate-500">{entry.note}</div> : null}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Step {Math.min(Number(entry.currentStep || 0) + 1, SHIPMENT_STEPS.length)} / {SHIPMENT_STEPS.length}
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <div className="rounded-[14px] border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                      No shipment history is recorded yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-500">
+                Use the shipment activity cards to inspect one shipment’s recent path and timing.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#2D8EFF]">Most active products</div>
+        <h3 className="mt-2 text-xl font-bold text-slate-900">Recently updated catalog items</h3>
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {mostActiveProducts.length ? mostActiveProducts.map((product) => (
+            <div key={product.id} className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4">
+              <div className="text-sm font-semibold text-slate-900">{product.name}</div>
+              <div className="mt-1 text-xs text-slate-500">{product.sku} · {product.itemType || "inventory"}</div>
+              <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                <span>{product.currentStock} {product.unit || "units"}</span>
+                <span>{warehouseStockSignalLabel(product.stockSignal || (isWarehouseLowStock(product) ? "low_stock" : "healthy"))}</span>
+              </div>
+              {canManageStock ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {canReviewProductMovement ? (
+                    <button
+                      type="button"
+                      onClick={() => openProductMovementReview(product.id)}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                    >
+                      Review movement
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setStockAdjustmentDraft((current) => ({
+                      ...current,
+                      productId: product.id,
+                      movementType: Number(product.currentStock || 0) <= Number(product.minimumStock || 0) ? "received" : current.movementType
+                    }))}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                  >
+                    Adjust stock
+                  </button>
+                </div>
+              ) : (
+                canReviewProductMovement ? (
+                  <button
+                    type="button"
+                    onClick={() => openProductMovementReview(product.id)}
+                    className="mt-3 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-[#2D8EFF] hover:text-[#2D8EFF]"
+                  >
+                    Review movement
+                  </button>
+                ) : null
+              )}
+            </div>
+          )) : (
+            <div className="rounded-[18px] border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-500">
+              No product activity yet.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/messages/FinanceMessageCards.jsx -----
+function InvoiceMessageCard({
+  message,
+  currentUser,
+  onEdit,
+  onApprove,
+  onRejectStart,
+  onRejectChange,
+  onRejectConfirm,
+  onMarkPaid,
+  onDownloadPdf,
+  onIssueRecurring,
+  onReconcile,
+  showAccounting = true,
+  canEdit = true,
+  canApprove = true,
+  canMarkPaid = true,
+  canReconcile = true,
+  downloadingPdf = false
+}) {
+  const status = message.metadata.status;
+  const canEditInvoice = Boolean(message.metadata.invoiceId) && canEdit;
+  const canDownloadPdf = Boolean(message.metadata.invoiceId) && typeof onDownloadPdf === "function";
+  const dueDate = new Date(message.metadata.dueDate);
+  const diffDays = Math.ceil((dueDate.getTime() - Date.now()) / 86400000);
+  const vendorInitials = String(message.metadata.companyName || "Vendor")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
+  const payments = Array.isArray(message.metadata.payments) ? message.metadata.payments : [];
+  const recurringDue = Boolean(message.metadata.recurringDue);
+  const accounting = message.metadata.accounting || {};
+  const blockedPeriodLabel = accounting.blockedPeriodKey ? formatPeriodKeyLabel(accounting.blockedPeriodKey) : "";
+  const paymentPostedCount = Number(accounting.paymentPostedCount || 0);
+  const invoiceAccountingBadges = [
+    accounting.controlStatus && accounting.controlStatus !== "clear"
+      ? {
+          id: "control-status",
+          label: accounting.controlStatus === "blocked"
+            ? `Blocked${blockedPeriodLabel ? ` · ${blockedPeriodLabel}` : ""}`
+            : formatFinanceControlStatusLabel(accounting.controlStatus),
+          tone: financeStatusToneFromState(accounting.controlStatus)
+        }
+      : null,
+    {
+      id: "revenue-status",
+      label: `Revenue ${formatAccountingEntryStatusLabel(accounting.revenueEntryStatus || "unposted")}`,
+      tone: financeStatusToneFromState(accounting.revenueEntryStatus || "unposted")
+    },
+    payments.length
+      ? {
+          id: "payment-status",
+          label: paymentPostedCount > 0 ? `Payments posted ${paymentPostedCount}` : "Payment journal pending",
+          tone: paymentPostedCount > 0 ? "good" : "neutral"
+        }
+      : null
+  ].filter(Boolean);
+
+  const statusTheme = {
+    pending: {
+      bg: "rgba(245,158,11,0.15)",
+      border: "1px solid rgba(245,158,11,0.3)",
+      color: "#f59e0b",
+      bar: "transparent"
+    },
+    approved: {
+      bg: "rgba(16,185,129,0.15)",
+      border: "1px solid rgba(16,185,129,0.3)",
+      color: "#10b981",
+      bar: "#10b981"
+    },
+    partial: {
+      bg: "rgba(251,191,36,0.15)",
+      border: "1px solid rgba(251,191,36,0.3)",
+      color: "#fbbf24",
+      bar: "#fbbf24"
+    },
+    paid: {
+      bg: "rgba(34,197,94,0.16)",
+      border: "1px solid rgba(34,197,94,0.3)",
+      color: "#22c55e",
+      bar: "#22c55e"
+    },
+    reconciled: {
+      bg: "rgba(14,165,233,0.16)",
+      border: "1px solid rgba(14,165,233,0.3)",
+      color: "#38bdf8",
+      bar: "#38bdf8"
+    },
+    rejected: {
+      bg: "rgba(239,68,68,0.15)",
+      border: "1px solid rgba(239,68,68,0.3)",
+      color: "#ef4444",
+      bar: "#ef4444"
+    },
+    overdue: {
+      bg: "rgba(239,68,68,0.15)",
+      border: "1px solid rgba(239,68,68,0.3)",
+      color: "#ef4444",
+      bar: "#ef4444"
+    }
+  }[status] || {
+    bg: "rgba(100,116,139,0.14)",
+    border: "1px solid rgba(100,116,139,0.22)",
+    color: "#94a3b8",
+    bar: "transparent"
+  };
+
+  const dueTone =
+    status === "overdue" || diffDays < 0
+      ? "#ef4444"
+      : diffDays <= 2
+        ? "#f59e0b"
+        : "#f1f5f9";
+
+  const amountTone =
+    status === "approved" || status === "paid" || status === "reconciled"
+      ? "#10b981"
+      : status === "rejected" || status === "overdue"
+        ? "#f1f5f9"
+        : "#f1f5f9";
+
+  const cardBorder =
+    status === "approved" || status === "paid"
+      ? "1px solid rgba(16,185,129,0.28)"
+      : status === "reconciled"
+        ? "1px solid rgba(56,189,248,0.28)"
+      : status === "rejected" || status === "overdue"
+        ? "1px solid rgba(239,68,68,0.24)"
+        : "1px solid rgba(255,255,255,0.08)";
+
+  const cardShadow =
+    status === "approved" || status === "paid"
+      ? "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(16,185,129,0.12)"
+      : status === "reconciled"
+        ? "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(56,189,248,0.12)"
+      : status === "rejected" || status === "overdue"
+        ? "0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(239,68,68,0.12)"
+        : "0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05)";
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+      style={{
+        position: "relative",
+        width: "100%",
+        maxWidth: 480,
+        borderRadius: 22,
+        padding: "20px 24px",
+        background: "linear-gradient(180deg, #111827 0%, #121b2d 100%)",
+        border: cardBorder,
+        boxShadow: cardShadow,
+        overflow: "hidden",
+        fontFamily: '"Manrope","DM Sans","Segoe UI",sans-serif'
+      }}
+    >
+      {(status === "overdue" || status === "rejected") && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: 3,
+            background: statusTheme.bar
+          }}
+        />
+      )}
+
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start" }}>
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#10b981",
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif'
+            }}
+          >
+            {message.metadata.invoiceNumber}
+          </p>
+          <h4
+            style={{
+              margin: "4px 0 0",
+              fontSize: 18,
+              fontWeight: 700,
+              color: "#f1f5f9",
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif'
+            }}
+          >
+            {message.metadata.companyName}
+          </h4>
+          {message.metadata.customer?.email ? (
+            <p className="mt-1 text-xs text-slate-500">{message.metadata.customer.email}</p>
+          ) : null}
+        </div>
+
+        <motion.span
+          animate={
+            status === "overdue"
+              ? { opacity: [1, 0.78, 1], boxShadow: ["0 0 0 rgba(239,68,68,0)", "0 0 18px rgba(239,68,68,0.18)", "0 0 0 rgba(239,68,68,0)"] }
+              : { opacity: 1, boxShadow: "0 0 0 rgba(0,0,0,0)" }
+          }
+          transition={status === "overdue" ? { repeat: Infinity, duration: 1.8 } : { duration: 0.2 }}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            borderRadius: 20,
+            padding: "8px 12px",
+            fontSize: 12,
+            fontWeight: 700,
+            textTransform: "capitalize",
+            background: statusTheme.bg,
+            border: statusTheme.border,
+            color: statusTheme.color,
+            fontFamily: '"Manrope","DM Sans","Segoe UI",sans-serif'
+          }}
+        >
+          {status}
+        </motion.span>
+      </div>
+
+      <p
+        style={{
+          margin: "14px 0 0",
+          fontSize: 40,
+          lineHeight: 1,
+          fontWeight: 800,
+          color: amountTone,
+          fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+          fontVariantNumeric: "tabular-nums"
+        }}
+      >
+        {formatMoney(message.metadata.amount, message.metadata.currency)}
+      </p>
+      {(Number(message.metadata.taxAmount || 0) > 0 || Number(message.metadata.subtotal || 0) !== Number(message.metadata.amount || 0)) ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Subtotal</div>
+            <div className="mt-1 text-sm font-semibold text-slate-100">
+              {formatMoney(message.metadata.subtotal || message.metadata.amount || 0, message.metadata.currency)}
+            </div>
+          </div>
+          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{message.metadata.taxLabel || "Tax"}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-100">
+              {formatMoney(message.metadata.taxAmount || 0, message.metadata.currency)}
+            </div>
+          </div>
+          <div className="rounded-[14px] border border-white/10 bg-white/5 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Total</div>
+            <div className="mt-1 text-sm font-semibold text-slate-100">
+              {formatMoney(message.metadata.totalWithTax || message.metadata.amount || 0, message.metadata.currency)}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {message.metadata.recurring?.enabled && !message.metadata.recurringSourceInvoiceId ? (
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+            Template
+          </span>
+        ) : null}
+        {message.metadata.recurringSourceInvoiceId ? (
+          <span className="rounded-full border border-sky-400/20 bg-sky-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-sky-300">
+            Generated run #{message.metadata.recurringSequence || 1}
+          </span>
+        ) : null}
+        {message.metadata.recurring?.enabled ? (
+          <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+            Recurring {message.metadata.recurring.frequency}
+          </span>
+        ) : null}
+        {recurringDue ? (
+          <span className="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+            Due to issue now
+          </span>
+        ) : null}
+        {message.metadata.outstandingAmount > 0 ? (
+          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-300">
+            Remaining {formatMoney(message.metadata.outstandingAmount, message.metadata.currency)}
+          </span>
+        ) : null}
+        {showAccounting
+          ? invoiceAccountingBadges.map((badge) => (
+              <span
+                key={`${message.id}-${badge.id}`}
+                className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={financeStatusBadgeStyle(badge.tone)}
+              >
+                {badge.label}
+              </span>
+            ))
+          : null}
+      </div>
+
+      {message.metadata.note ? (
+        <div
+          style={{
+            marginTop: 14,
+            borderRadius: 16,
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "rgba(255,255,255,0.04)",
+            padding: "12px 14px"
+          }}
+        >
+          <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Note
+          </div>
+          <div style={{ marginTop: 6, color: "#cbd5e1", fontSize: 13, lineHeight: 1.6 }}>
+            {message.metadata.note}
+          </div>
+        </div>
+      ) : null}
+
+      {showAccounting && accounting.controlStatus === "blocked" ? (
+        <div
+          style={{
+            marginTop: 14,
+            borderRadius: 16,
+            border: "1px solid rgba(239,68,68,0.22)",
+            background: "rgba(127,29,29,0.22)",
+            padding: "12px 14px"
+          }}
+        >
+          <div
+            style={{
+              color: "#fecaca",
+              fontSize: 12,
+              fontWeight: 700,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase"
+            }}
+          >
+            Locked-period safeguard
+          </div>
+          <div style={{ marginTop: 6, color: "#fee2e2", fontSize: 13, fontWeight: 600 }}>
+            {blockedPeriodLabel ? `${blockedPeriodLabel} is locked for accounting changes.` : "This invoice is currently blocked for accounting changes."}
+          </div>
+          <div style={{ marginTop: 4, color: "#fca5a5", fontSize: 12 }}>
+            {accounting.blockedReason || "Unlock the period before changing approval, payment, reconciliation, or other posting-related fields."}
+          </div>
+        </div>
+      ) : null}
+
+      <div
+        style={{
+          marginTop: 18,
+          paddingTop: 16,
+          borderTop: "1px solid rgba(255,255,255,0.06)",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 16,
+          alignItems: "center"
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#475569",
+              fontWeight: 700
+            }}
+          >
+            Due Date
+          </p>
+          <p
+            style={{
+              margin: "6px 0 0",
+              fontSize: 14,
+              fontWeight: 700,
+              color: dueTone,
+              fontFamily: '"Manrope","DM Sans","Segoe UI",sans-serif'
+            }}
+          >
+            {formatDate(message.metadata.dueDate)}
+          </p>
+        </div>
+
+        <div
+          aria-hidden="true"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            background: "rgba(255,255,255,0.06)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "#f1f5f9",
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif'
+          }}
+        >
+          {vendorInitials || "V"}
+        </div>
+      </div>
+
+      {(status === "pending" || status === "overdue") && !message.metadata.showRejectInput ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          {canEditInvoice ? (
+            <button
+              type="button"
+              onClick={() => onEdit(message)}
+              style={{
+                borderRadius: 12,
+                padding: "10px 24px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#e2e8f0",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Edit Invoice
+            </button>
+          ) : null}
+          {canApprove ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onApprove(message)}
+                style={{
+                  borderRadius: 12,
+                  padding: "10px 24px",
+                  border: "1px solid rgba(16,185,129,0.4)",
+                  background: "rgba(16,185,129,0.15)",
+                  color: "#10b981",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                Approve ✓
+              </button>
+              <button
+                type="button"
+                onClick={() => onRejectStart(message)}
+                style={{
+                  borderRadius: 12,
+                  padding: "10px 24px",
+                  border: "1px solid rgba(239,68,68,0.3)",
+                  background: "rgba(239,68,68,0.1)",
+                  color: "#ef4444",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer"
+                }}
+              >
+                Reject ✗
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      {canDownloadPdf ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => onDownloadPdf(message)}
+            disabled={downloadingPdf}
+            style={{
+              borderRadius: 12,
+              padding: "10px 24px",
+              border: "1px solid rgba(56,189,248,0.28)",
+              background: "rgba(56,189,248,0.12)",
+              color: "#38bdf8",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: downloadingPdf ? "progress" : "pointer",
+              opacity: downloadingPdf ? 0.7 : 1
+            }}
+          >
+            {downloadingPdf ? "Generating PDF..." : "Download PDF"}
+          </button>
+        </div>
+      ) : null}
+
+      {message.metadata.showRejectInput && canApprove ? (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <textarea
+            value={message.metadata.rejectReason || ""}
+            onChange={(event) => onRejectChange(message, event.target.value)}
+            placeholder="Reason for rejection..."
+            rows={3}
+            style={{
+              width: "100%",
+              resize: "vertical",
+              borderRadius: 12,
+              border: "1px solid rgba(239,68,68,0.18)",
+              background: "rgba(255,255,255,0.04)",
+              color: "#f1f5f9",
+              padding: "12px 14px",
+              outline: "none",
+              fontSize: 14,
+              boxSizing: "border-box"
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => onRejectConfirm(message)}
+            style={{
+              marginTop: 12,
+              borderRadius: 12,
+              padding: "10px 18px",
+              border: "1px solid rgba(239,68,68,0.34)",
+              background: "rgba(239,68,68,0.14)",
+              color: "#ef4444",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Confirm Reject
+          </button>
+        </div>
+      ) : null}
+
+      {Array.isArray(message.metadata.attachments) && message.metadata.attachments.length ? (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            display: "flex",
+            flexWrap: "wrap",
+            gap: 10
+          }}
+        >
+          {message.metadata.attachments.map((attachment) => (
+            <a
+              key={`${message.id}-${attachment.fileName}`}
+              href={attachment.fileUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 12,
+                padding: "10px 12px",
+                border: "1px solid rgba(255,255,255,0.08)",
+                background: "rgba(255,255,255,0.04)",
+                color: "#cbd5e1",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none"
+              }}
+            >
+              <span>📎</span>
+              <span>{attachment.fileName}</span>
+            </a>
+          ))}
+        </div>
+      ) : null}
+
+      {payments.length ? (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <div style={{ color: "#94a3b8", fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            Payment history
+          </div>
+          <div style={{ marginTop: 8, color: "#cbd5e1", fontSize: 12 }}>
+            {payments.length} payment{payments.length === 1 ? "" : "s"} recorded · {formatMoney(message.metadata.paidAmount || 0, message.metadata.currency)} collected
+          </div>
+          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+            {payments.slice().reverse().map((payment, index) => (
+              <div
+                key={`${message.id}-payment-${payment.id || index}`}
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "10px 12px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center"
+                }}
+              >
+                <div>
+                  <div style={{ color: "#f8fafc", fontSize: 13, fontWeight: 700 }}>
+                    Payment {payments.length - index} · {formatMoney(payment.amount, message.metadata.currency)}
+                  </div>
+                  <div style={{ marginTop: 4, color: "#64748b", fontSize: 12 }}>
+                    {formatDateTime(payment.recordedAt)}
+                  </div>
+                  <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 12 }}>
+                    {formatPaymentMethod(payment.method)}
+                    {payment.reference ? ` · Ref ${payment.reference}` : ""}
+                  </div>
+                  {payment.note ? (
+                    <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 12, maxWidth: 360 }}>
+                      {payment.note}
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ color: "#cbd5e1", fontSize: 12 }}>
+                    {payment.recordedBy?.name || "Finance staff"}
+                  </div>
+                  <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 12 }}>
+                    {formatMoney(payment.remainingBalance || 0, message.metadata.currency)} left
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {status === "approved" || status === "partial" ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            color: status === "partial" ? "#fbbf24" : "#10b981",
+            fontSize: 12,
+            fontWeight: 700
+          }}
+        >
+          {status === "partial"
+            ? `Partial payment recorded. ${formatMoney(message.metadata.outstandingAmount || 0, message.metadata.currency)} still open`
+            : `✓ Approved by ${message.metadata.approvedByName || currentUser.name}`}
+        </motion.div>
+      ) : null}
+
+      {(status === "approved" || status === "partial") && canMarkPaid ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          {canEditInvoice ? (
+            <button
+              type="button"
+              onClick={() => onEdit(message)}
+              style={{
+                borderRadius: 12,
+                padding: "10px 24px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#e2e8f0",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Edit Invoice
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onMarkPaid(message)}
+            style={{
+              borderRadius: 12,
+              padding: "10px 24px",
+              border: "1px solid rgba(34,197,94,0.38)",
+              background: "rgba(34,197,94,0.15)",
+              color: "#22c55e",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            {status === "partial" ? "Record More Payment" : "Record Payment"}
+          </button>
+        </div>
+      ) : null}
+
+      {message.metadata.recurring?.enabled && canEdit ? (
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <div style={{ color: recurringDue ? "#fbbf24" : "#94a3b8", fontSize: 12, fontWeight: 700 }}>
+            Next issue {message.metadata.recurring?.nextIssueDate ? formatDate(message.metadata.recurring.nextIssueDate) : "not scheduled"}
+          </div>
+          {recurringDue ? (
+            <button
+              type="button"
+              onClick={() => onIssueRecurring(message)}
+              style={{
+                borderRadius: 12,
+                padding: "10px 24px",
+                border: "1px solid rgba(16,185,129,0.4)",
+                background: "rgba(16,185,129,0.15)",
+                color: "#10b981",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Issue Next Invoice
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
+      {status === "paid" && canReconcile ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <div style={{ color: "#22c55e", fontSize: 12, fontWeight: 700 }}>
+            Paid by {message.metadata.paidByName || currentUser.name}
+          </div>
+          {canEditInvoice ? (
+            <button
+              type="button"
+              onClick={() => onEdit(message)}
+              style={{
+                marginTop: 12,
+                marginRight: 12,
+                borderRadius: 12,
+                padding: "10px 24px",
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.05)",
+                color: "#e2e8f0",
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: "pointer"
+              }}
+            >
+              Edit Invoice
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => onReconcile(message)}
+            style={{
+              marginTop: 12,
+              borderRadius: 12,
+              padding: "10px 24px",
+              border: "1px solid rgba(56,189,248,0.34)",
+              background: "rgba(56,189,248,0.14)",
+              color: "#38bdf8",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Reconcile
+          </button>
+        </motion.div>
+      ) : null}
+
+      {canEditInvoice && (status === "rejected" || status === "reconciled") ? (
+        <div
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => onEdit(message)}
+            style={{
+              borderRadius: 12,
+              padding: "10px 24px",
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.05)",
+              color: "#e2e8f0",
+              fontSize: 14,
+              fontWeight: 700,
+              cursor: "pointer"
+            }}
+          >
+            Edit Invoice
+          </button>
+        </div>
+      ) : null}
+
+      {status === "rejected" ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)"
+          }}
+        >
+          <div style={{ color: "#ef4444", fontSize: 12, fontWeight: 700 }}>
+            Rejected by {message.metadata.rejectedByName || currentUser.name}
+          </div>
+          {message.metadata.rejectionReason ? (
+            <div style={{ marginTop: 6, color: "#94a3b8", fontSize: 13 }}>
+              {message.metadata.rejectionReason}
+            </div>
+          ) : null}
+        </motion.div>
+      ) : null}
+
+      {status === "reconciled" ? (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.2 }}
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+            color: "#38bdf8",
+            fontSize: 12,
+            fontWeight: 700
+          }}
+        >
+          ✓ Reconciled by {message.metadata.reconciledByName || currentUser.name}
+        </motion.div>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function ExpenseMessageCard({
+  message,
+  onNoteChange,
+  onLogExpense,
+  onApproveExpense,
+  onStartRejectExpense,
+  onRejectExpenseChange,
+  onConfirmRejectExpense,
+  onStartReimburseExpense,
+  onReimburseExpenseChange,
+  onConfirmReimburseExpense,
+  onReconcileExpense,
+  onEditExpense,
+  showAccounting = true,
+  canEdit = true,
+  canOperate = true,
+  canManageWorkflow = false,
+  canReimburse = true,
+  canReconcile = true
+}) {
+  const status = normalizeFinanceExpenseStatus(message.metadata.status);
+  const isPersistedExpense = Boolean(message.metadata.expenseId);
+  const actionDisabled = !canOperate || (message.metadata.logged && !isPersistedExpense);
+  const actionLabel = message.metadata.logged
+    ? isPersistedExpense
+      ? "Save Note"
+      : "Logged"
+    : "Log Expense";
+  const canApproveExpense = canManageWorkflow && isPersistedExpense && status === "pending_review";
+  const canRejectExpense = canManageWorkflow && isPersistedExpense && ["pending_review", "approved"].includes(status);
+  const canShowRejectInput = Boolean(message.metadata.showRejectInput) && canRejectExpense;
+  const canReimburseExpense = canReimburse && isPersistedExpense && status === "approved";
+  const canShowReimburseInput = Boolean(message.metadata.showReimburseInput) && canReimburseExpense;
+  const canReconcileExpense = canReconcile && isPersistedExpense && ["approved", "reimbursed"].includes(status);
+  const accounting = message.metadata.accounting || {};
+  const blockedPeriodLabel = accounting.blockedPeriodKey ? formatPeriodKeyLabel(accounting.blockedPeriodKey) : "";
+  const statusBadgeClass = {
+    draft: "bg-slate-100 text-slate-700",
+    pending_review: "bg-amber-100 text-amber-700",
+    approved: "bg-emerald-100 text-emerald-700",
+    reimbursed: "bg-green-100 text-green-700",
+    reconciled: "bg-sky-100 text-sky-700",
+    rejected: "bg-rose-100 text-rose-700"
+  }[status] || "bg-slate-100 text-slate-700";
+  const expenseAccountingBadges = [
+    accounting.controlStatus && accounting.controlStatus !== "clear"
+      ? {
+          id: "control-status",
+          label: accounting.controlStatus === "blocked"
+            ? `Blocked${blockedPeriodLabel ? ` · ${blockedPeriodLabel}` : ""}`
+            : formatFinanceControlStatusLabel(accounting.controlStatus),
+          tone: financeStatusToneFromState(accounting.controlStatus)
+        }
+      : null,
+    {
+      id: "expense-status",
+      label: `Expense ${formatAccountingEntryStatusLabel(accounting.expenseEntryStatus || "unposted")}`,
+      tone: financeStatusToneFromState(accounting.expenseEntryStatus || "unposted")
+    },
+    status === "reconciled" || accounting.settlementEntryStatus === "posted" || accounting.settlementEntryStatus === "voided"
+      ? {
+          id: "settlement-status",
+          label: `Settlement ${formatAccountingEntryStatusLabel(accounting.settlementEntryStatus || "unposted")}`,
+          tone: financeStatusToneFromState(accounting.settlementEntryStatus || "unposted")
+        }
+      : null
+  ].filter(Boolean);
+
+  return (
+    <motion.div layout className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Expense</p>
+          <p className="mt-1 text-2xl font-bold text-slate-900">{formatMoney(message.metadata.amount, message.metadata.currency)}</p>
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${statusBadgeClass}`}>
+            {formatFinanceExpenseStatusLabel(status)}
+          </span>
+          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-[#2D8EFF] capitalize">{message.metadata.category}</span>
+        </div>
+      </div>
+      {(Number(message.metadata.taxAmount || 0) > 0 || Number(message.metadata.totalWithTax || message.metadata.amount || 0) !== Number(message.metadata.amount || 0)) ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Subtotal</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">
+              {formatMoney((message.metadata.totalWithTax || message.metadata.amount || 0) - (message.metadata.taxAmount || 0), message.metadata.currency)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{message.metadata.taxLabel || "Tax"}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">
+              {formatMoney(message.metadata.taxAmount || 0, message.metadata.currency)}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Total</div>
+            <div className="mt-1 text-sm font-semibold text-slate-900">
+              {formatMoney(message.metadata.totalWithTax || message.metadata.amount || 0, message.metadata.currency)}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {message.metadata.vendorName ? (
+        <p className="mt-2 text-sm text-slate-500">{message.metadata.vendorName}</p>
+      ) : null}
+      {message.metadata.expenseDate ? (
+        <p className="mt-1 text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
+          Expense date {formatDate(message.metadata.expenseDate)}
+        </p>
+      ) : null}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {showAccounting
+          ? expenseAccountingBadges.map((badge) => (
+              <span
+                key={`${message.id}-${badge.id}`}
+                className="rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]"
+                style={financeStatusBadgeStyle(badge.tone)}
+              >
+                {badge.label}
+              </span>
+            ))
+          : null}
+      </div>
+      {showAccounting && accounting.controlStatus === "blocked" ? (
+        <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-rose-700">Locked-period safeguard</div>
+          <div className="mt-1 text-sm font-semibold text-rose-900">
+            {blockedPeriodLabel ? `${blockedPeriodLabel} is locked for expense posting changes.` : "This expense is currently blocked for posting changes."}
+          </div>
+          <div className="mt-1 text-xs text-rose-700">
+            {accounting.blockedReason || "Unlock the period before changing reconciled or posted accounting fields."}
+          </div>
+        </div>
+      ) : null}
+      <textarea
+        value={message.metadata.note || ""}
+        onChange={(event) => onNoteChange(message, event.target.value)}
+        rows={3}
+        className="mt-4 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm outline-none"
+        placeholder="Add a note for finance"
+        readOnly={!canOperate}
+      />
+      {message.metadata.receipt ? (
+        <a
+          href={message.metadata.receipt.fileUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-700"
+        >
+          <span>🧾</span>
+          <span>{message.metadata.receipt.fileName}</span>
+        </a>
+      ) : null}
+      {canOperate ? (
+        <button
+          type="button"
+          onClick={() => onLogExpense(message)}
+          disabled={actionDisabled}
+          className={`mt-4 rounded-full px-4 py-2 text-sm font-bold text-white shadow-sm ${
+            message.metadata.logged ? "bg-emerald-500" : "bg-slate-900"
+          }`}
+        >
+          {actionLabel}
+        </button>
+      ) : null}
+      {isPersistedExpense && canEdit ? (
+        <button
+          type="button"
+          onClick={() => onEditExpense(message)}
+          className="mt-3 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700"
+        >
+          Edit Expense
+        </button>
+      ) : null}
+      {(canApproveExpense || canRejectExpense) && !canShowRejectInput ? (
+        <div className="mt-3 flex flex-wrap gap-3">
+          {canApproveExpense ? (
+            <button
+              type="button"
+              onClick={() => onApproveExpense(message)}
+              className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700"
+            >
+              Approve Expense
+            </button>
+          ) : null}
+          {canRejectExpense ? (
+            <button
+              type="button"
+              onClick={() => onStartRejectExpense(message)}
+              className="rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-700"
+            >
+              Reject Expense
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {canShowRejectInput ? (
+        <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
+          <textarea
+            value={message.metadata.rejectReason || ""}
+            onChange={(event) => onRejectExpenseChange(message, event.target.value)}
+            rows={3}
+            className="w-full rounded-2xl border border-rose-200 bg-white px-3 py-3 text-sm outline-none"
+            placeholder="Reason for rejection"
+          />
+          <button
+            type="button"
+            onClick={() => onConfirmRejectExpense(message)}
+            className="mt-3 rounded-full border border-rose-200 bg-white px-4 py-2 text-sm font-bold text-rose-700"
+          >
+            Confirm Reject
+          </button>
+        </div>
+      ) : null}
+      {canReimburseExpense && !canShowReimburseInput ? (
+        <button
+          type="button"
+          onClick={() => onStartReimburseExpense(message)}
+          className="mt-3 rounded-full border border-green-200 bg-green-50 px-4 py-2 text-sm font-bold text-green-700"
+        >
+          Reimburse Expense
+        </button>
+      ) : null}
+      {canShowReimburseInput ? (
+        <div className="mt-3 rounded-2xl border border-green-200 bg-green-50 px-4 py-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              value={message.metadata.reimbursementMethod || ""}
+              onChange={(event) => onReimburseExpenseChange(message, "method", event.target.value)}
+              className="rounded-2xl border border-green-200 bg-white px-3 py-3 text-sm outline-none"
+              placeholder="Method (optional)"
+            />
+            <input
+              value={message.metadata.reimbursementReference || ""}
+              onChange={(event) => onReimburseExpenseChange(message, "reference", event.target.value)}
+              className="rounded-2xl border border-green-200 bg-white px-3 py-3 text-sm outline-none"
+              placeholder="Reference (optional)"
+            />
+          </div>
+          <textarea
+            value={message.metadata.reimbursementNote || ""}
+            onChange={(event) => onReimburseExpenseChange(message, "note", event.target.value)}
+            rows={2}
+            className="mt-3 w-full rounded-2xl border border-green-200 bg-white px-3 py-3 text-sm outline-none"
+            placeholder="Note (optional)"
+          />
+          <button
+            type="button"
+            onClick={() => onConfirmReimburseExpense(message)}
+            className="mt-3 rounded-full border border-green-200 bg-white px-4 py-2 text-sm font-bold text-green-700"
+          >
+            Confirm Reimbursement
+          </button>
+        </div>
+      ) : null}
+      {canReconcileExpense ? (
+        <button
+          type="button"
+          onClick={() => onReconcileExpense(message)}
+          className="mt-3 rounded-full border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-bold text-sky-700"
+        >
+          Reconcile Expense
+        </button>
+      ) : null}
+      {status === "approved" ? (
+        <p className="mt-3 text-sm font-medium text-emerald-700">
+          Approved{message.metadata.approvedByName ? ` by ${message.metadata.approvedByName}` : ""}.
+        </p>
+      ) : null}
+      {status === "rejected" ? (
+        <div className="mt-3 text-sm text-rose-700">
+          <div className="font-medium">
+            Rejected{message.metadata.rejectedByName ? ` by ${message.metadata.rejectedByName}` : ""}.
+          </div>
+          {message.metadata.rejectionReason ? (
+            <div className="mt-1 text-rose-600">{message.metadata.rejectionReason}</div>
+          ) : null}
+        </div>
+      ) : null}
+      {status === "reimbursed" ? (
+        <div className="mt-3 text-sm text-green-700">
+          <div className="font-medium">
+            Reimbursed{message.metadata.reimbursedByName ? ` by ${message.metadata.reimbursedByName}` : ""}.
+          </div>
+          {(message.metadata.reimbursement?.method || message.metadata.reimbursement?.reference) ? (
+            <div className="mt-1 text-green-600">
+              {message.metadata.reimbursement?.method || "Method not specified"}
+              {message.metadata.reimbursement?.reference ? ` · Ref ${message.metadata.reimbursement.reference}` : ""}
+            </div>
+          ) : null}
+          {message.metadata.reimbursement?.note ? (
+            <div className="mt-1 text-green-600">{message.metadata.reimbursement.note}</div>
+          ) : null}
+        </div>
+      ) : null}
+      {status === "reconciled" ? (
+        <p className="mt-3 text-sm font-medium text-sky-700">
+          Reconciled{message.metadata.reconciledByName ? ` by ${message.metadata.reconciledByName}` : ""}.
+        </p>
+      ) : null}
+    </motion.div>
+  );
+}
+
+function ReportMessageCard({ message }) {
+  return (
+    <motion.div layout className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <h4 className="text-lg font-bold text-slate-900">Finance + Warehouse Summary</h4>
+      <div className="mt-4 grid grid-cols-2 gap-3">
+        {message.metadata.metrics.map((metric) => (
+          <div key={metric.label} className="rounded-2xl bg-slate-50 p-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{metric.label}</p>
+            <p className="mt-2 text-lg font-bold text-slate-900">{metric.value}</p>
+          </div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+function LinkedWorkMessageCard({ message, financeMode = false }) {
+  const linkedWork = message?.metadata?.linkedWork;
+  if (!linkedWork) {
+    return null;
+  }
+
+  const accent = linkedWork.kind === "project"
+    ? financeMode ? "rgba(59,130,246,0.18)" : "rgba(59,130,246,0.12)"
+    : financeMode ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.12)";
+  const border = linkedWork.kind === "project"
+    ? financeMode ? "rgba(96,165,250,0.32)" : "rgba(59,130,246,0.22)"
+    : financeMode ? "rgba(251,191,36,0.32)" : "rgba(245,158,11,0.22)";
+  const statusLabel = linkedWork.kind === "project"
+    ? linkedWork.status === "planning"
+      ? "Planning"
+      : linkedWork.status === "active"
+        ? "Active"
+        : linkedWork.status === "completed"
+          ? "Completed"
+          : linkedWork.status || "Project"
+    : linkedWork.status === "todo"
+      ? "Todo"
+      : linkedWork.status === "doing"
+        ? "In progress"
+        : linkedWork.status === "done"
+          ? "Done"
+          : linkedWork.status || "Task";
+
+  return (
+    <div
+      className="max-w-[620px] rounded-2xl px-4 py-3"
+      style={{
+        background: accent,
+        border: `1px solid ${border}`
+      }}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-300" : "text-slate-500"}`}>
+            {linkedWork.kind === "project"
+              ? linkedWork.action === "attached"
+                ? "Attached project"
+                : "Linked project"
+              : "Linked task"}
+          </p>
+          <p className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-50" : "text-slate-900"}`}>{linkedWork.title}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-[11px] font-semibold ${financeMode ? "bg-white/10 text-slate-100" : "bg-white text-slate-600 ring-1 ring-slate-200"}`}>
+          {statusLabel}
+        </span>
+      </div>
+      <p className={`mt-2 text-sm leading-6 ${financeMode ? "text-slate-300" : "text-slate-600"}`}>{message.content}</p>
+      <p className={`mt-2 text-xs ${financeMode ? "text-slate-400" : "text-slate-400"}`}>{formatTime(message.createdAt)}</p>
+    </div>
+  );
+}
+
+// ----- workspace/messages/MessageInteraction.jsx -----
+function useMessageInteractionState({
+  workspaceState,
+  workspaceMode,
+  activePicker,
+  setActivePicker,
+  setReactions,
+  seededReactionsRef
+}) {
+  const reactionNameMap = useMemo(() => {
+    const map = {
+      [workspaceState.currentUser.id]: workspaceState.currentUser.name,
+      me: workspaceState.currentUser.name,
+      financebot: "FinanceBot",
+      warebot: "WareBot"
+    };
+
+    if (workspaceMode === "demo") {
+      map.sarah = "Sarah Khan";
+    }
+
+    workspaceState.threads.forEach((thread) => {
+      map[thread.id] = thread.name;
+      thread.messages.forEach((message) => {
+        map[message.senderId] = message.senderName;
+      });
+    });
+
+    return map;
+  }, [workspaceMode, workspaceState.currentUser.id, workspaceState.currentUser.name, workspaceState.threads]);
+
+  const resolveReactionUserName = useCallback((userId) => reactionNameMap[userId] || userId, [reactionNameMap]);
+
+  useEffect(() => {
+    if (seededReactionsRef.current || !workspaceState.threads.length) {
+      return;
+    }
+
+    const financeThread = workspaceState.threads.find((thread) => thread.id === "financebot");
+    const warehouseThread = workspaceState.threads.find((thread) => thread.id === "warebot");
+
+    setReactions((current) => {
+      if (Object.keys(current).length) {
+        return current;
+      }
+
+      const seeded = {};
+      if (financeThread?.messages[0]?.id) {
+        seeded[financeThread.messages[0].id] =
+          workspaceMode === "real" ? { "👍": ["financebot"] } : { "👍": ["sarah", "financebot"] };
+      }
+      if (warehouseThread?.messages[0]?.id) {
+        seeded[warehouseThread.messages[0].id] =
+          workspaceMode === "real" ? { "🔥": ["warebot"] } : { "🔥": ["warebot"], "😂": ["sarah"] };
+      }
+      return seeded;
+    });
+    seededReactionsRef.current = true;
+  }, [seededReactionsRef, setReactions, workspaceMode, workspaceState.threads]);
+
+  useEffect(() => {
+    if (!activePicker) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      const pickerHost = event.target.closest?.("[data-reaction-host]");
+      if (!pickerHost) {
+        setActivePicker(null);
+      }
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [activePicker, setActivePicker]);
+
+  const handleReact = useCallback((messageId, emoji) => {
+    const currentUserId = workspaceState.currentUser.id;
+    setReactions((previous) => {
+      const messageReactions = { ...(previous[messageId] || {}) };
+      const alreadyReacted = !!previous[messageId]?.[emoji]?.includes(currentUserId);
+
+      Object.keys(messageReactions).forEach((key) => {
+        messageReactions[key] = (messageReactions[key] || []).filter((userId) => userId !== currentUserId);
+        if (!messageReactions[key].length) {
+          delete messageReactions[key];
+        }
+      });
+
+      if (!alreadyReacted) {
+        messageReactions[emoji] = [...(messageReactions[emoji] || []), currentUserId];
+      }
+
+      const next = { ...previous };
+      if (Object.keys(messageReactions).length) {
+        next[messageId] = messageReactions;
+      } else {
+        delete next[messageId];
+      }
+      return next;
+    });
+    setActivePicker(null);
+  }, [setActivePicker, setReactions, workspaceState.currentUser.id]);
+
+  return {
+    reactionNameMap,
+    resolveReactionUserName,
+    handleReact
+  };
+}
+
+function useLongPress(callback, delay = 500) {
+  const timerRef = useRef(null);
+  const isLongPressRef = useRef(false);
+
+  function clearTimer() {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }
+
+  function start(event) {
+    isLongPressRef.current = false;
+    clearTimer();
+    timerRef.current = window.setTimeout(() => {
+      isLongPressRef.current = true;
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(30);
+      }
+      callback(event);
+    }, delay);
+  }
+
+  function stop() {
+    clearTimer();
+  }
+
+  function click(event) {
+    if (isLongPressRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }
+
+  useEffect(() => () => clearTimer(), []);
+
+  return {
+    onMouseDown: start,
+    onMouseUp: stop,
+    onMouseLeave: stop,
+    onTouchStart: start,
+    onTouchEnd: stop,
+    onClick: click
+  };
+}
+
+function ReactionPicker({ isOwn, onSelect, onClose }) {
+  const [visible, setVisible] = useState(false);
+  const [hoveredEmoji, setHoveredEmoji] = useState(null);
+  const closeTimerRef = useRef(null);
+
+  function clearCloseTimer() {
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }
+
+  function scheduleClose() {
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setVisible(false);
+      window.setTimeout(onClose, 160);
+    }, 3000);
+  }
+
+  useEffect(() => {
+    const raf = window.requestAnimationFrame(() => setVisible(true));
+    scheduleClose();
+    return () => {
+      window.cancelAnimationFrame(raf);
+      clearCloseTimer();
+    };
+  }, []);
+
+  function handleSelect(emoji) {
+    clearCloseTimer();
+    setVisible(false);
+    window.setTimeout(() => onSelect(emoji), 150);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        aria-label="Close reactions"
+        onClick={onClose}
+        className="fixed inset-0 z-[99] bg-transparent"
+      />
+      <div
+        onMouseEnter={scheduleClose}
+        onMouseMove={scheduleClose}
+        onTouchStart={scheduleClose}
+        className={`absolute bottom-[calc(100%+10px)] z-[100] ${
+          isOwn ? "right-0" : "left-0"
+        }`}
+        style={{
+          background: "rgba(20,12,35,0.97)",
+          backdropFilter: "blur(20px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          borderRadius: 999,
+          padding: "8px 10px",
+          boxShadow: "0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04)",
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          transform: visible ? "translateY(0) scale(1)" : "translateY(8px) scale(0.85)",
+          opacity: visible ? 1 : 0,
+          transition: "transform 220ms cubic-bezier(0.34,1.56,0.64,1), opacity 180ms ease",
+          fontFamily: '"Sora", sans-serif'
+        }}
+      >
+        {REACTIONS.map((reaction, index) => (
+          <div key={reaction.emoji} className="relative">
+            {hoveredEmoji === reaction.emoji ? (
+              <div
+                className="pointer-events-none absolute left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-semibold text-white"
+                style={{
+                  bottom: "110%",
+                  background: "rgba(0,0,0,0.82)"
+                }}
+              >
+                {reaction.label}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => handleSelect(reaction.emoji)}
+              onMouseEnter={() => {
+                setHoveredEmoji(reaction.emoji);
+                scheduleClose();
+              }}
+              onMouseLeave={() => setHoveredEmoji(null)}
+              className="relative z-[1] flex h-[38px] w-[38px] items-center justify-center rounded-full border-none text-[22px]"
+              style={{
+                background: hoveredEmoji === reaction.emoji ? "rgba(255,255,255,0.12)" : "transparent",
+                transform: hoveredEmoji === reaction.emoji ? "scale(1.5) translateY(-4px)" : "scale(1)",
+                transition: "transform 150ms cubic-bezier(0.34,1.56,0.64,1), background 150ms ease"
+              }}
+            >
+              {reaction.emoji}
+            </button>
+            {index === 2 ? (
+              <div
+                style={{
+                  position: "absolute",
+                  right: -3,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  width: 1,
+                  height: 24,
+                  background: "rgba(255,255,255,0.12)"
+                }}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ReactionSummary({ reactions, currentUserId, onReact, resolveReactionUserName }) {
+  const [tooltip, setTooltip] = useState(null);
+
+  return (
+    <div className="relative mt-1 flex flex-wrap gap-1">
+      {Object.entries(reactions).map(([emoji, users]) => {
+        if (!users.length) {
+          return null;
+        }
+
+        const iReacted = users.includes(currentUserId);
+        const names = users.map((userId) => resolveReactionUserName(userId));
+
+        return (
+          <div key={emoji} className="relative">
+            {tooltip === emoji ? (
+              <div
+                className="absolute bottom-[120%] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[11px] text-white shadow-[0_4px_12px_rgba(0,0,0,0.3)]"
+                style={{
+                  background: "rgba(0,0,0,0.9)",
+                  fontFamily: '"Sora", sans-serif'
+                }}
+              >
+                {names.slice(0, 3).join(", ")}
+                {names.length > 3 ? ` +${names.length - 3} others` : ""}
+              </div>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => onReact(emoji)}
+              onMouseEnter={() => setTooltip(emoji)}
+              onMouseLeave={() => setTooltip(null)}
+              className="workspace-reaction-pop flex items-center gap-1 rounded-full px-2 py-1 text-[13px] text-white transition"
+              style={{
+                border: iReacted ? "1px solid rgba(255,111,216,0.5)" : "1px solid rgba(255,255,255,0.12)",
+                background: iReacted ? "rgba(255,111,216,0.15)" : "rgba(255,255,255,0.07)",
+                fontFamily: '"Sora", sans-serif'
+              }}
+            >
+              <span>{emoji}</span>
+              <span
+                key={`${emoji}-${users.length}`}
+                className="workspace-reaction-count-flip text-[11px] font-semibold"
+                style={{
+                  color: iReacted ? "#ff6fd8" : "rgba(255,255,255,0.7)"
+                }}
+              >
+                {users.length}
+              </span>
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  currentUser,
+  currentThread,
+  role,
+  financeMode = false,
+  reactions,
+  activePicker,
+  setActivePicker,
+  onReact,
+  resolveReactionUserName,
+  onApproveInvoice,
+  onEditInvoice,
+  onStartRejectInvoice,
+  onRejectReasonChange,
+  onConfirmRejectInvoice,
+  onReorderStart,
+  onReorderChange,
+  onReorderConfirm,
+  onDismissStockAlert,
+  onMarkDelivered,
+  onUpdateShipmentStatus,
+  onExpenseNoteChange,
+  onLogExpense,
+  onApproveExpense,
+  onStartRejectExpense,
+  onRejectExpenseChange,
+  onConfirmRejectExpense,
+  onStartReimburseExpense,
+  onReimburseExpenseChange,
+  onConfirmReimburseExpense,
+  onEditExpense,
+  financePermissions,
+  onMarkPaidInvoice,
+  onDownloadInvoicePdf,
+  downloadingInvoicePdfId = null,
+  onIssueRecurringInvoice,
+  onReconcileInvoice,
+  onReconcileExpense,
+  showFinanceAccounting = true,
+  canManageFinanceMembers = false,
+  canCreateLinkedWork = false,
+  onCreateTaskFromMessage = null,
+  onCreateProjectFromMessage = null,
+  onAttachProjectMessage = null
+}) {
+  const isMe = message.senderId === currentUser.id || message.senderId === "me";
+  const bubbleRef = useRef(null);
+  const hoverTimerRef = useRef(null);
+  const isTouch = useMemo(() => isCoarsePointer(), []);
+  const messageReactions = reactions[message.id] || {};
+  const hasReactions = Object.keys(messageReactions).length > 0;
+  const canReact = message.type !== "system" || currentThread.isBot;
+
+  function clearHoverTimer() {
+    if (hoverTimerRef.current) {
+      window.clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+  }
+
+  const longPressProps = useLongPress(() => {
+    if (canReact) {
+      setActivePicker(message.id);
+    }
+  }, 500);
+
+  useEffect(() => () => clearHoverTimer(), []);
+
+  function handleMouseEnter() {
+    if (isTouch || !canReact) {
+      return;
+    }
+    clearHoverTimer();
+    hoverTimerRef.current = window.setTimeout(() => {
+      setActivePicker(message.id);
+    }, 400);
+  }
+
+  function handleMouseLeave() {
+    clearHoverTimer();
+  }
+
+  const bubbleTriggerProps = canReact
+    ? {
+        ...longPressProps,
+        onMouseEnter: handleMouseEnter,
+        onMouseLeave: handleMouseLeave
+      }
+    : {};
+
+  const bubbleBody =
+    message.type === "system" && message.metadata?.linkedWork ? (
+      <LinkedWorkMessageCard message={message} financeMode={financeMode} />
+    ) : message.type !== "text" && message.type !== "system" ? (
+      <div className="max-w-[540px]">
+        {message.type === "invoice" ? (
+          <InvoiceMessageCard
+            message={message}
+            currentUser={currentUser}
+            onEdit={onEditInvoice}
+            onApprove={onApproveInvoice}
+            onRejectStart={onStartRejectInvoice}
+            onRejectChange={onRejectReasonChange}
+            onRejectConfirm={onConfirmRejectInvoice}
+            onMarkPaid={onMarkPaidInvoice}
+            onDownloadPdf={onDownloadInvoicePdf}
+            downloadingPdf={downloadingInvoicePdfId === message.metadata.invoiceId}
+            onIssueRecurring={onIssueRecurringInvoice}
+            onReconcile={onReconcileInvoice}
+            showAccounting={showFinanceAccounting}
+            canEdit={financePermissions?.canEdit}
+            canApprove={financePermissions?.canApprove}
+            canMarkPaid={financePermissions?.canMarkPaid}
+            canReconcile={financePermissions?.canReconcile}
+          />
+        ) : null}
+        {message.type === "stock_alert" ? (
+          <StockAlertMessageCard
+            message={message}
+            onReorderStart={onReorderStart}
+            onReorderChange={onReorderChange}
+            onReorderConfirm={onReorderConfirm}
+            onDismiss={onDismissStockAlert}
+          />
+        ) : null}
+        {message.type === "shipment" ? (
+          <ShipmentMessageCard
+            message={message}
+            canManage={role !== "finance"}
+            onMarkDelivered={onMarkDelivered}
+            onUpdateStatus={onUpdateShipmentStatus}
+          />
+        ) : null}
+        {message.type === "expense" ? (
+          <ExpenseMessageCard
+            message={message}
+            onNoteChange={onExpenseNoteChange}
+            onLogExpense={onLogExpense}
+            onApproveExpense={onApproveExpense}
+            onStartRejectExpense={onStartRejectExpense}
+            onRejectExpenseChange={onRejectExpenseChange}
+            onConfirmRejectExpense={onConfirmRejectExpense}
+            onStartReimburseExpense={onStartReimburseExpense}
+            onReimburseExpenseChange={onReimburseExpenseChange}
+            onConfirmReimburseExpense={onConfirmReimburseExpense}
+            onEditExpense={onEditExpense}
+            onReconcileExpense={onReconcileExpense}
+            showAccounting={showFinanceAccounting}
+            canEdit={financePermissions?.canEdit}
+            canOperate={financePermissions?.canEdit}
+            canManageWorkflow={canManageFinanceMembers}
+            canReimburse={financePermissions?.canEdit}
+            canReconcile={financePermissions?.canReconcile}
+          />
+        ) : null}
+        {message.type === "report" ? <ReportMessageCard message={message} /> : null}
+        <p className={`mt-2 text-xs ${financeMode ? "text-slate-500" : "text-slate-400"}`}>{formatTime(message.createdAt)}</p>
+      </div>
+    ) : message.type === "system" && financeMode ? (
+      <div
+        className="max-w-[640px] rounded-2xl px-4 py-3"
+        style={{
+          background: "rgba(245,158,11,0.08)",
+          border: "1px solid rgba(245,158,11,0.18)",
+          color: "#f8fafc"
+        }}
+      >
+        <p className="text-sm leading-6">{message.content}</p>
+        <p className="mt-2 text-xs text-amber-300/80">{formatTime(message.createdAt)}</p>
+      </div>
+    ) : (
+      <div
+        className={`max-w-[560px] rounded-2xl px-4 py-3 ${
+          financeMode
+            ? isMe
+              ? "text-white"
+              : "text-slate-100"
+            : isMe
+              ? "bg-[#2D8EFF] text-white"
+              : "bg-white text-slate-800 shadow-sm ring-1 ring-slate-200"
+        }`}
+        style={
+          financeMode
+            ? isMe
+              ? {
+                  background: "linear-gradient(135deg,#10b981,#059669)",
+                  boxShadow: "0 14px 32px rgba(5,150,105,0.18)"
+                }
+              : {
+                  background: "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.08)"
+                }
+            : undefined
+        }
+      >
+        <p className="text-sm leading-6">{message.content}</p>
+        <p className={`mt-2 text-xs ${financeMode ? (isMe ? "text-white/70" : "text-slate-500") : isMe ? "text-white/70" : "text-slate-400"}`}>{formatTime(message.createdAt)}</p>
+      </div>
+    );
+
+  return (
+    <div className={`flex flex-col ${isMe ? "items-end" : "items-start"}`} style={{ marginBottom: hasReactions ? 18 : 8 }}>
+      <div className={`relative flex ${isMe ? "justify-end" : "justify-start"}`}>
+        <div ref={bubbleRef} className="relative" style={{ userSelect: "none" }} {...bubbleTriggerProps}>
+          {bubbleBody}
+          {activePicker === message.id && canReact ? (
+            <ReactionPicker
+              isOwn={isMe}
+              onClose={() => setActivePicker(null)}
+              onSelect={(emoji) => onReact(message.id, emoji)}
+            />
+          ) : null}
+        </div>
+      </div>
+      {canCreateLinkedWork && message.type !== "system" ? (
+        <div className={`mt-2 flex gap-2 ${isMe ? "justify-end" : "justify-start"}`}>
+          <button
+            type="button"
+            onClick={() => onCreateTaskFromMessage?.(message)}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+              financeMode
+                ? "border border-white/10 bg-white/5 text-slate-200"
+                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+            }`}
+          >
+            + Task
+          </button>
+          <button
+            type="button"
+            onClick={() => onCreateProjectFromMessage?.(message)}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+              financeMode
+                ? "border border-white/10 bg-white/5 text-slate-200"
+                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+            }`}
+          >
+            + Project
+          </button>
+          <button
+            type="button"
+            onClick={() => onAttachProjectMessage?.(message)}
+            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+              financeMode
+                ? "border border-white/10 bg-white/5 text-slate-200"
+                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+            }`}
+          >
+            Attach
+          </button>
+        </div>
+      ) : null}
+      {hasReactions ? (
+        <ReactionSummary
+          reactions={messageReactions}
+          currentUserId={currentUser.id}
+          onReact={(emoji) => onReact(message.id, emoji)}
+          resolveReactionUserName={resolveReactionUserName}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function NotificationToasts({ onOpenThread }) {
+  const { toasts, dismissToast } = useNotifications();
+
+  return (
+    <div className="pointer-events-none fixed right-6 top-6 z-[80] flex w-[320px] flex-col gap-3">
+      <AnimatePresence>
+        {toasts.map((toast) => (
+          <motion.button
+            key={toast.id}
+            initial={{ opacity: 0, x: 24, scale: 0.96 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 20, scale: 0.96 }}
+            onClick={() => {
+              onOpenThread(toast.threadId);
+              dismissToast(toast.id);
+            }}
+            className="pointer-events-auto rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-[0_24px_48px_rgba(15,23,42,0.14)]"
+          >
+            <p className="text-sm font-bold text-slate-900">{toast.title}</p>
+            <p className="mt-1 text-sm text-slate-500">{toast.body}</p>
+          </motion.button>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ----- workspace/admin/WorkspaceAdminPanels.jsx -----
+function WorkspaceMemberAccessPanel({
+  members = [],
+  loading = false,
+  canManage = false,
+  canBootstrapManage = false,
+  workspaceScope = "both",
+  currentUserId = null,
+  savingMemberId = null,
+  onToggleRole,
+  onUpdateWorkspaceAccess,
+  onRefresh
+}) {
+  const visibleMembers = members;
+  const workspaceRoleOptions = [
+    { id: "owner", label: "Workspace Owner" },
+    { id: "manager", label: "Workspace Manager" },
+    { id: "member", label: "Workspace Member" }
+  ];
+  const moduleOptions = [
+    { id: "finance", label: "Finance" },
+    { id: "warehouse", label: "Warehouse" }
+  ];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">
+            {canBootstrapManage ? "Workspace bootstrap" : "Workspace access"}
+          </div>
+          <h3
+            style={{
+              marginTop: 8,
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+              fontSize: 24,
+              lineHeight: 1.15,
+              fontWeight: 700,
+              color: "#f8fafc"
+            }}
+          >
+            Workspace team access
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            {canBootstrapManage
+              ? "As the app owner, you can grant workspace access, choose the first workspace owner or manager, assign module access, and then fine-tune finance roles for each customer account."
+              : "Manage workspace members, assign module access, and keep finance-specific permissions limited to members who need them."}
+          </p>
+        </div>
+        {canManage ? (
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200"
+          >
+            Refresh members
+          </button>
+        ) : null}
+      </div>
+
+      {!canManage ? (
+        <div
+          className="rounded-[24px] p-6 text-sm text-slate-400"
+          style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }}
+        >
+          Your current workspace role can use this workspace, but only workspace managers or admins can manage member access.
+        </div>
+      ) : loading ? (
+        <div
+          className="rounded-[24px] p-6 text-sm text-slate-400"
+          style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }}
+        >
+          Loading workspace members...
+        </div>
+      ) : visibleMembers.length ? (
+        <div className="grid gap-4">
+          {visibleMembers.map((member) => {
+            const roles = Array.isArray(member.workspaceRoles) ? member.workspaceRoles : [];
+            const modules = Array.isArray(member.workspaceModules) ? member.workspaceModules : [];
+            const showFinanceRoleSection =
+              workspaceScope !== "warehouse" && (canBootstrapManage || modules.includes("finance") || roles.length > 0);
+            const roleOptions = [
+              { id: "viewer", label: "Viewer" },
+              { id: "approver", label: "Approver" },
+              { id: "finance_staff", label: "Finance Staff" },
+              { id: "accountant", label: "Accountant" }
+            ];
+
+            return (
+              <div
+                key={member.id}
+                className="rounded-[24px] p-5"
+                style={{
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                }}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-base font-semibold text-white">
+                      {member.name}
+                      {member.id === currentUserId ? " (You)" : ""}
+                    </div>
+                    <div className="mt-1 text-sm text-slate-400">{member.email}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <span
+                        className="rounded-full border px-3 py-1 text-xs font-semibold"
+                        style={{
+                          borderColor: "rgba(255,255,255,0.08)",
+                          background: member.workspaceEnabled ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                          color: member.workspaceEnabled ? "#10b981" : "#94a3b8"
+                        }}
+                      >
+                        {member.workspaceEnabled ? "Workspace enabled" : "Workspace disabled"}
+                      </span>
+                      <span
+                        className="rounded-full border px-3 py-1 text-xs font-semibold"
+                        style={{
+                          borderColor: "rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.05)",
+                          color: "#f8fafc"
+                        }}
+                      >
+                        {member.workspaceRole || "member"}
+                      </span>
+                      {(modules.length ? modules : ["no modules"]).map((moduleId) => (
+                        <span
+                          key={`${member.id}-module-${moduleId}`}
+                          className="rounded-full border px-3 py-1 text-xs font-semibold"
+                          style={{
+                            borderColor: "rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.05)",
+                            color: "#cbd5e1"
+                          }}
+                        >
+                          {moduleId}
+                        </span>
+                      ))}
+                    </div>
+                    {showFinanceRoleSection ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {(roles.length ? roles : ["no finance role"]).map((role) => (
+                          <span
+                            key={`${member.id}-${role}`}
+                            className="rounded-full border px-3 py-1 text-xs font-semibold"
+                            style={{
+                              borderColor: "rgba(255,255,255,0.08)",
+                              background: "rgba(255,255,255,0.05)",
+                              color: role === "no finance role" ? "#94a3b8" : "#f8fafc"
+                            }}
+                          >
+                            {role.replace("_", " ")}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="text-right text-xs text-slate-500">
+                    <div>{member.isAdmin ? "Admin" : member.workspaceRole || "member"}</div>
+                    <div className="mt-1">{member.presenceStatus || "offline"}</div>
+                  </div>
+                </div>
+
+                {canBootstrapManage ? (
+                  <div
+                    className="mt-4 space-y-3 rounded-[18px] p-4"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      background: "rgba(255,255,255,0.03)"
+                    }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Workspace access
+                      </div>
+                      <button
+                        type="button"
+                        disabled={savingMemberId === member.id}
+                        onClick={() =>
+                          onUpdateWorkspaceAccess?.(member, {
+                            workspaceEnabled: !member.workspaceEnabled
+                          })
+                        }
+                        className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{
+                          borderColor: member.workspaceEnabled ? "rgba(239,68,68,0.28)" : "rgba(16,185,129,0.36)",
+                          background: member.workspaceEnabled ? "rgba(239,68,68,0.1)" : "rgba(16,185,129,0.14)",
+                          color: member.workspaceEnabled ? "#f87171" : "#10b981"
+                        }}
+                      >
+                        {member.workspaceEnabled ? "Disable workspace" : "Enable workspace"}
+                      </button>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Workspace role
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {workspaceRoleOptions.map((option) => {
+                          const active = (member.workspaceRole || "") === option.id;
+                          return (
+                            <button
+                              key={`${member.id}-workspace-role-${option.id}`}
+                              type="button"
+                              disabled={savingMemberId === member.id}
+                              onClick={() => onUpdateWorkspaceAccess?.(member, { workspaceRole: option.id, workspaceEnabled: true })}
+                              className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{
+                                borderColor: active ? "rgba(96,165,250,0.36)" : "rgba(255,255,255,0.1)",
+                                background: active ? "rgba(96,165,250,0.14)" : "rgba(255,255,255,0.05)",
+                                color: active ? "#60a5fa" : "#cbd5e1"
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Workspace modules
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {moduleOptions.map((option) => {
+                          const active = modules.includes(option.id);
+                          const nextModules = active ? modules.filter((entry) => entry !== option.id) : [...modules, option.id];
+                          return (
+                            <button
+                              key={`${member.id}-workspace-module-${option.id}`}
+                              type="button"
+                              disabled={savingMemberId === member.id}
+                              onClick={() =>
+                                onUpdateWorkspaceAccess?.(member, {
+                                  workspaceModules: nextModules,
+                                  workspaceEnabled: true
+                                })
+                              }
+                              className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{
+                                borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
+                                background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                                color: active ? "#10b981" : "#cbd5e1"
+                              }}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {showFinanceRoleSection ? (
+                  <div
+                    className="mt-4 space-y-3 rounded-[18px] p-4"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      background: "rgba(255,255,255,0.03)"
+                    }}
+                  >
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      Finance roles
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {roleOptions.map((option) => {
+                        const active = roles.includes(option.id);
+                        return (
+                          <button
+                            key={`${member.id}-${option.id}`}
+                            type="button"
+                            disabled={!canManage || savingMemberId === member.id}
+                            onClick={() => onToggleRole?.(member, option.id)}
+                            className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{
+                              borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
+                              background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                              color: active ? "#10b981" : "#cbd5e1"
+                            }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div
+          className="rounded-[24px] p-6 text-sm text-slate-400"
+          style={{ border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }}
+        >
+          No workspace members are assigned yet.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceAdminOverviewPanel({
+  workspace = null,
+  membership = null,
+  settings = null,
+  accountingEnabled = false,
+  accountingEnabledAt = null,
+  loading = false,
+  onRefresh = null,
+  onEnableAccounting = null,
+  enablingAccounting = false,
+  onUpdateDefaultCurrency = null,
+  savingDefaultCurrency = false,
+  onInviteAccountant = null,
+  invitingAccountant = false,
+  members = []
+}) {
+  const summary = settings?.summary || {};
+  const managers = Array.isArray(summary.managers) ? summary.managers : [];
+  const moduleChips = Array.isArray(membership?.modules) ? membership.modules : [];
+  const workspaceModules = Array.isArray(summary.workspaceModules) ? summary.workspaceModules : [];
+  const roleLabel = membership?.workspaceRole || "member";
+  const canEnableAccounting = Boolean(onEnableAccounting) && (membership?.workspaceRole === "owner" || membership?.workspaceRole === "manager" || membership?.isAdmin);
+  const canUpdateDefaultCurrency = Boolean(onUpdateDefaultCurrency) && (membership?.workspaceRole === "owner" || membership?.workspaceRole === "manager" || membership?.isAdmin);
+  const canInviteAccountant = Boolean(onInviteAccountant) && (membership?.workspaceRole === "owner" || membership?.workspaceRole === "manager" || membership?.isAdmin);
+  const [defaultCurrencyDraft, setDefaultCurrencyDraft] = useState(resolveWorkspaceDefaultCurrency(workspace, settings));
+  const [accountantInvite, setAccountantInvite] = useState({ email: "", name: "" });
+  const accountantMembers = useMemo(
+    () => (Array.isArray(members) ? members.filter((member) => Array.isArray(member.workspaceRoles) && member.workspaceRoles.includes("accountant")) : []),
+    [members]
+  );
+
+  useEffect(() => {
+    setDefaultCurrencyDraft(resolveWorkspaceDefaultCurrency(workspace, settings));
+  }, [settings, workspace]);
+
+  return (
+    <div
+      className="rounded-[24px] p-6"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#0f172a 0%,#10192a 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-300">
+            Workspace settings
+          </div>
+          <h3
+            style={{
+              marginTop: 8,
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+              fontSize: 24,
+              lineHeight: 1.15,
+              fontWeight: 700,
+              color: "#f8fafc"
+            }}
+          >
+            {workspace?.name || "Workspace"}
+          </h3>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            Keep workspace ownership, module access, and member responsibilities visible from one place without mixing them into daily finance or warehouse actions.
+          </p>
+        </div>
+        {onRefresh ? (
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200"
+          >
+            Refresh settings
+          </button>
+        ) : null}
+      </div>
+
+      {loading ? (
+        <div
+          className="mt-5 rounded-[18px] p-4 text-sm text-slate-400"
+          style={{ border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}
+        >
+          Loading workspace summary...
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Your role</div>
+              <div className="mt-2 text-lg font-semibold text-white">{roleLabel}</div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(moduleChips.length ? moduleChips : ["no modules"]).map((moduleId) => (
+                  <span
+                    key={`membership-module-${moduleId}`}
+                    className="rounded-full border px-3 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: moduleId === "no modules" ? "#94a3b8" : "#cbd5e1"
+                    }}
+                  >
+                    {moduleId}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Ownership</div>
+              <div className="mt-2 text-lg font-semibold text-white">{summary.owner?.name || "Unassigned"}</div>
+              <div className="mt-1 text-sm text-slate-400">{summary.owner?.email || "No owner assigned yet"}</div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Default currency</div>
+              <div className="mt-2 text-lg font-semibold text-white">{resolveWorkspaceDefaultCurrency(workspace, settings)}</div>
+              {canUpdateDefaultCurrency ? (
+                <div className="mt-3 space-y-2">
+                  <select
+                    value={defaultCurrencyDraft}
+                    onChange={(event) => setDefaultCurrencyDraft(event.target.value)}
+                    className="w-full rounded-[14px] border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none"
+                  >
+                    {FINANCE_CURRENCY_OPTIONS.map((currency) => (
+                      <option key={`workspace-default-currency-${currency}`} value={currency}>
+                        {currency}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateDefaultCurrency?.(defaultCurrencyDraft)}
+                    disabled={savingDefaultCurrency || defaultCurrencyDraft === resolveWorkspaceDefaultCurrency(workspace, settings)}
+                    className="rounded-[12px] border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {savingDefaultCurrency ? "Saving..." : "Save default currency"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-slate-500">Used as the default when new finance and purchasing records are created.</div>
+              )}
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Managers</div>
+              <div className="mt-2 text-lg font-semibold text-white">{managers.length}</div>
+              <div className="mt-3 space-y-1 text-sm text-slate-400">
+                {managers.length ? managers.slice(0, 3).map((manager) => <div key={manager.id}>{manager.name}</div>) : <div>No managers assigned</div>}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Members</div>
+              <div className="mt-2 text-lg font-semibold text-white">{summary.activeMembers || 0}</div>
+              <div className="mt-1 text-sm text-slate-400">
+                {summary.suspendedMembers || 0} suspended
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(workspaceModules.length ? workspaceModules : ["no modules"]).map((moduleId) => (
+                  <span
+                    key={`workspace-module-${moduleId}`}
+                    className="rounded-full border px-3 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: "rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.05)",
+                      color: moduleId === "no modules" ? "#94a3b8" : "#cbd5e1"
+                    }}
+                  >
+                    {moduleId}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Accounting module</div>
+              <div className="mt-2 text-lg font-semibold text-white">{accountingEnabled ? "Enabled" : "Not enabled"}</div>
+              <div className="mt-1 text-sm text-slate-400">
+                {accountingEnabledAt
+                  ? `Active since ${formatDateTime(accountingEnabledAt)}`
+                  : "Finance workflow is currently running without optional accounting entitlement."}
+              </div>
+              {accountingEnabledAt ? (
+                <div className="mt-3 rounded-[14px] border border-emerald-400/18 bg-emerald-500/8 px-3 py-3 text-xs leading-5 text-emerald-100">
+                  Accounting coverage begins from this activation point forward. Earlier Finance workflow records remain operational history until an explicit backfill path exists.
+                </div>
+              ) : null}
+              {!accountingEnabled && canEnableAccounting ? (
+                <button
+                  type="button"
+                  onClick={onEnableAccounting}
+                  disabled={enablingAccounting}
+                  className="mt-3 rounded-[14px] border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {enablingAccounting ? "Enabling..." : "Enable accounting"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {summary.usesLegacyFallback ? (
+            <div
+              className="mt-4 rounded-[18px] p-4"
+              style={{
+                border: "1px solid rgba(245,158,11,0.28)",
+                background: "rgba(245,158,11,0.08)"
+              }}
+            >
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-300">Compatibility mode</div>
+              <div className="mt-2 text-sm leading-6 text-amber-100">
+                This workspace is still using legacy membership fallback for the current session. Explicit membership is preferred and will give you stricter tenant isolation.
+              </div>
+            </div>
+          ) : null}
+
+          {canInviteAccountant ? (
+            <div className="mt-4 rounded-[18px] border border-white/10 bg-white/5 p-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Invite accountant</div>
+              <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <input
+                  value={accountantInvite.name}
+                  onChange={(event) => setAccountantInvite((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Accountant name"
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                />
+                <input
+                  type="email"
+                  value={accountantInvite.email}
+                  onChange={(event) => setAccountantInvite((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="accountant@firm.com"
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={invitingAccountant}
+                  onClick={async () => {
+                    const invited = await onInviteAccountant?.(accountantInvite);
+                    if (invited?.membershipId || invited?.id) {
+                      setAccountantInvite({ email: "", name: "" });
+                    }
+                  }}
+                  className="rounded-[14px] border border-sky-400/25 bg-sky-500/15 px-4 py-3 text-sm font-semibold text-sky-200 disabled:opacity-60"
+                >
+                  {invitingAccountant ? "Inviting..." : "Send invite"}
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {accountantMembers.length ? accountantMembers.map((member) => (
+                  <span
+                    key={`accountant-${member.id}`}
+                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200"
+                  >
+                    {member.name} · accountant
+                  </span>
+                )) : (
+                  <span className="text-sm text-slate-400">No accountant members yet.</span>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PlatformOwnerProvisioningPanel({
+  currentUser = null,
+  workspaces = [],
+  loading = false,
+  selectedWorkspaceId = null,
+  onSelectWorkspace = null,
+  onRefresh = null,
+  onCreateWorkspace = null,
+  creatingWorkspace = false,
+  onProvisionMember = null,
+  provisioningMember = false
+}) {
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+  const [customerPassword, setCustomerPassword] = useState("");
+  const [workspaceRole, setWorkspaceRole] = useState("owner");
+  const [modules, setModules] = useState(["finance", "warehouse"]);
+  const [financeRoles, setFinanceRoles] = useState(["approver", "finance_staff"]);
+
+  const selectedWorkspace = useMemo(
+    () => workspaces.find((entry) => entry.workspace?.id === selectedWorkspaceId) || null,
+    [selectedWorkspaceId, workspaces]
+  );
+
+  function toggleModule(moduleId) {
+    setModules((current) => {
+      const nextModules = current.includes(moduleId)
+        ? current.filter((entry) => entry !== moduleId)
+        : [...current, moduleId];
+
+      if (!nextModules.includes("finance")) {
+        setFinanceRoles([]);
+      }
+
+      return nextModules;
+    });
+  }
+
+  function toggleFinanceRole(roleId) {
+    setFinanceRoles((current) =>
+      current.includes(roleId)
+        ? current.filter((entry) => entry !== roleId)
+        : [...current, roleId]
+    );
+  }
+
+  async function handleCreateWorkspace(event) {
+    event.preventDefault();
+    const createdWorkspace = await onCreateWorkspace?.({
+      name: workspaceName,
+      slug: workspaceSlug
+    });
+
+    if (createdWorkspace?.id) {
+      setWorkspaceName("");
+      setWorkspaceSlug("");
+      onSelectWorkspace?.(createdWorkspace.id);
+    }
+  }
+
+  async function handleProvisionMember(event) {
+    event.preventDefault();
+    if (!selectedWorkspaceId) {
+      return;
+    }
+
+    const nextMember = await onProvisionMember?.(selectedWorkspaceId, {
+      name: customerName,
+      email: customerEmail,
+      password: customerPassword,
+      workspaceRole,
+      modules,
+      financeRoles: modules.includes("finance") ? financeRoles : []
+    });
+
+    if (nextMember) {
+      setCustomerName("");
+      setCustomerEmail("");
+      setCustomerPassword("");
+      setWorkspaceRole("owner");
+      setModules(["finance", "warehouse"]);
+      setFinanceRoles(["approver", "finance_staff"]);
+    }
+  }
+
+  return (
+    <div
+      className="rounded-[24px] p-6"
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        background: "linear-gradient(180deg,#07111f 0%,#0b1728 100%)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+      }}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">Platform owner</div>
+          <h3
+            style={{
+              marginTop: 8,
+              fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+              fontSize: 24,
+              lineHeight: 1.15,
+              fontWeight: 700,
+              color: "#f8fafc"
+            }}
+          >
+            Customer provisioning
+          </h3>
+          <p className="mt-2 max-w-3xl text-sm text-slate-400">
+            Only your platform-owner account can see this area. Create customer workspaces, assign the first customer account, and choose whether each workspace gets finance, warehouse, or both.
+          </p>
+        </div>
+        <div className="rounded-[18px] border border-white/10 bg-white/5 px-4 py-3 text-right">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Signed in as</div>
+          <div className="mt-1 text-sm font-semibold text-white">{currentUser?.name || "Platform owner"}</div>
+          <div className="text-xs text-slate-400">{currentUser?.email || ""}</div>
+        </div>
+      </div>
+
+      <div className="mt-6 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-5">
+          <div className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Workspaces</div>
+                <div className="mt-1 text-sm text-slate-300">
+                  Pick a workspace to view its customer members and edit access.
+                </div>
+              </div>
+              {onRefresh ? (
+                <button
+                  type="button"
+                  onClick={onRefresh}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200"
+                >
+                  Refresh list
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {loading ? (
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  Loading customer workspaces...
+                </div>
+              ) : workspaces.length ? (
+                workspaces.map((entry) => {
+                  const isSelected = entry.workspace?.id === selectedWorkspaceId;
+                  const modules = Array.isArray(entry.modules) ? entry.modules : [];
+
+                  return (
+                    <button
+                      key={entry.workspace?.id}
+                      type="button"
+                      onClick={() => onSelectWorkspace?.(entry.workspace?.id)}
+                      className="rounded-[18px] p-4 text-left transition"
+                      style={{
+                        border: isSelected ? "1px solid rgba(16,185,129,0.35)" : "1px solid rgba(255,255,255,0.08)",
+                        background: isSelected ? "rgba(16,185,129,0.08)" : "rgba(255,255,255,0.03)"
+                      }}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-white">{entry.workspace?.name || "Workspace"}</div>
+                          <div className="mt-1 text-xs text-slate-400">{entry.workspace?.slug || ""}</div>
+                        </div>
+                        <div className="text-right text-xs text-slate-500">
+                          <div>{entry.memberCount || 0} members</div>
+                          <div>{entry.suspendedMemberCount || 0} suspended</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(modules.length ? modules : ["no modules"]).map((moduleId) => (
+                          <span
+                            key={`${entry.workspace?.id}-${moduleId}`}
+                            className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                            style={{
+                              borderColor: "rgba(255,255,255,0.08)",
+                              background: "rgba(255,255,255,0.05)",
+                              color: moduleId === "no modules" ? "#94a3b8" : "#cbd5e1"
+                            }}
+                          >
+                            {moduleId}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                        <span className="text-slate-400">{entry.owner?.email || "Owner not assigned"}</span>
+                        <span className="font-semibold text-emerald-300">{isSelected ? "Selected" : "Select workspace"}</span>
+                      </div>
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  No customer workspaces yet. Create the first one below.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-5">
+          <form
+            onSubmit={handleCreateWorkspace}
+            className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4"
+          >
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Create workspace</div>
+            <div className="mt-3 grid gap-3">
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Workspace name</span>
+                <input
+                  value={workspaceName}
+                  onChange={(event) => setWorkspaceName(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="Northwind Workspace"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Workspace slug (optional)</span>
+                <input
+                  value={workspaceSlug}
+                  onChange={(event) => setWorkspaceSlug(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="northwind-workspace"
+                />
+              </label>
+            </div>
+            <button
+              type="submit"
+              disabled={creatingWorkspace}
+              className="mt-4 rounded-[14px] border border-emerald-400/25 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {creatingWorkspace ? "Creating workspace..." : "Create workspace"}
+            </button>
+          </form>
+
+          <form
+            onSubmit={handleProvisionMember}
+            className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Provision customer</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  {selectedWorkspace
+                    ? `Adding a customer to ${selectedWorkspace.workspace?.name || "the selected workspace"}`
+                    : "Create or select a workspace first, then assign the first customer account."}
+                </div>
+              </div>
+              {selectedWorkspace ? (
+                <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                  {selectedWorkspace.workspace?.name}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Customer name</span>
+                <input
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="Nadia Rahman"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Customer email</span>
+                <input
+                  type="email"
+                  value={customerEmail}
+                  onChange={(event) => setCustomerEmail(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="owner@northwind.com"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Initial password</span>
+                <input
+                  type="password"
+                  value={customerPassword}
+                  onChange={(event) => setCustomerPassword(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="Temporary password"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">First workspace role</div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["owner", "Owner"],
+                  ["manager", "Manager"],
+                  ["member", "Member"]
+                ].map(([id, label]) => {
+                  const active = workspaceRole === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setWorkspaceRole(id)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                      style={{
+                        borderColor: active ? "rgba(96,165,250,0.36)" : "rgba(255,255,255,0.1)",
+                        background: active ? "rgba(96,165,250,0.14)" : "rgba(255,255,255,0.05)",
+                        color: active ? "#60a5fa" : "#cbd5e1"
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Purchased modules</div>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  ["finance", "Finance"],
+                  ["warehouse", "Warehouse"]
+                ].map(([id, label]) => {
+                  const active = modules.includes(id);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => toggleModule(id)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                      style={{
+                        borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
+                        background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                        color: active ? "#10b981" : "#cbd5e1"
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {modules.includes("finance") ? (
+              <div className="mt-4">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Finance roles</div>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["viewer", "Viewer"],
+                    ["approver", "Approver"],
+                    ["finance_staff", "Finance Staff"],
+                    ["accountant", "Accountant"]
+                  ].map(([id, label]) => {
+                    const active = financeRoles.includes(id);
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => toggleFinanceRole(id)}
+                        className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                        style={{
+                          borderColor: active ? "rgba(250,204,21,0.36)" : "rgba(255,255,255,0.1)",
+                          background: active ? "rgba(250,204,21,0.14)" : "rgba(255,255,255,0.05)",
+                          color: active ? "#facc15" : "#cbd5e1"
+                        }}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            <button
+              type="submit"
+              disabled={!selectedWorkspaceId || provisioningMember}
+              className="mt-4 rounded-[14px] border border-sky-400/25 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {provisioningMember ? "Provisioning customer..." : "Create or assign customer"}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/overview/WorkspaceOverviewPanel.jsx -----
+function OverviewStatCard({ metric, onSelect, financeMode = false, onActivate = null }) {
+  const meta = financeMetricMeta(metric);
+  const clickHandler = onActivate || (() => onSelect(metric));
+  const highlightTone = metric?.highlightTone || "";
+  const highlightStyle =
+    !financeMode && highlightTone === "danger"
+      ? { background: "linear-gradient(135deg,#fff1f2,#ffe4e6)", color: "#be123c" }
+      : !financeMode && highlightTone === "warning"
+        ? { background: "linear-gradient(135deg,#fffbeb,#fef3c7)", color: "#b45309" }
+        : !financeMode && highlightTone === "info"
+          ? { background: "linear-gradient(135deg,#eff6ff,#dbeafe)", color: "#1d4ed8" }
+          : undefined;
+
+  return (
+    <motion.button
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.98 }}
+      type="button"
+      onClick={clickHandler}
+      className={`text-left ${financeMode ? "rounded-[22px] p-5" : `rounded-2xl bg-gradient-to-br p-4 shadow-sm ${metricTone(metric.id)}`}`}
+      style={
+        financeMode
+          ? {
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "#111827",
+              boxShadow: "0 8px 32px rgba(0,0,0,0.35)"
+            }
+          : highlightStyle
+      }
+    >
+      <p className={`text-xs font-semibold uppercase tracking-[0.18em] ${financeMode ? "" : "text-current/70"}`} style={financeMode ? { color: meta.accent } : undefined}>
+        {financeMode ? meta.label : metric.label}
+      </p>
+      <p className={`mt-2 font-bold ${financeMode ? "text-[28px] text-slate-50" : "text-2xl"}`} style={financeMode ? { fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif' } : undefined}>
+        {metric.value}
+      </p>
+      {metric.subvalue ? <p className={`mt-1 text-xs ${financeMode ? "text-slate-400" : "text-current/70"}`}>{metric.subvalue}</p> : null}
+    </motion.button>
+  );
+}
+
+function WorkspaceOverviewPanel({
+  financeMode = false,
+  workspaceScope = "both",
+  overviewPressure = null,
+  financeMetricCards = [],
+  warehouseMetricCards = [],
+  executionSummary = null,
+  financeActivity = [],
+  financeSummary = null,
+  warehouseSummary = null,
+  recentPayments = [],
+  recentShipments = [],
+  operationsBridgePanel = null,
+  onSelectMetric,
+  onNavigate = null,
+  canManageOverview = false
+}) {
+  const canSeeFinance = canAccessWorkspaceScope("finance", workspaceScope);
+  const canSeeWarehouse = canAccessWorkspaceScope("warehouse", workspaceScope);
+  const financePressure = overviewPressure?.finance || null;
+  const warehousePressure = overviewPressure?.warehouse || null;
+  const taskPressure = overviewPressure?.tasks || null;
+  const projectPressure = overviewPressure?.projects || null;
+  const hasExecutionVisibility = Boolean(taskPressure || projectPressure || executionSummary?.trackedTasks || executionSummary?.trackedProjects);
+  const overviewVariant = canSeeFinance && canSeeWarehouse ? "both" : canSeeFinance ? "finance" : canSeeWarehouse ? "warehouse" : hasExecutionVisibility ? "execution" : "none";
+  const pressureSortRank = (item) => {
+    const count = Number(item.count || 0);
+    const zeroPenalty = count > 0 ? 0 : 1000;
+    switch (item.id) {
+      case "finance-overdue":
+      case "tasks-overdue":
+        return zeroPenalty + 1;
+      case "finance-pending-approvals":
+      case "warehouse-low-stock":
+      case "warehouse-needs-attention":
+      case "projects-with-overdue":
+        return zeroPenalty + 2;
+      case "finance-reconcile":
+      case "tasks-due-today":
+      case "warehouse-pending-shipments":
+        return zeroPenalty + 3;
+      case "tasks-my":
+      case "tasks-unassigned":
+      case "projects-active":
+        return zeroPenalty + 4;
+      default:
+        return zeroPenalty + 5;
+    }
+  };
+  const highlightToneForCount = (count, tone = "info") => (Number(count || 0) > 0 ? tone : "");
+  const financeOverviewCards = canSeeFinance && financePressure
+    ? [
+        {
+          id: "finance-pending-approvals",
+          label: "Pending Approvals",
+          value: `${Number(financePressure.pendingApprovals || 0) + Number(financePressure.pendingExpenses || 0)}`,
+          subvalue: `${financePressure.pendingApprovals || 0} invoices · ${financePressure.pendingExpenses || 0} expenses`,
+          count: Number(financePressure.pendingApprovals || 0) + Number(financePressure.pendingExpenses || 0),
+          highlightTone: highlightToneForCount(Number(financePressure.pendingApprovals || 0) + Number(financePressure.pendingExpenses || 0), "warning"),
+          action: () => onNavigate?.({ scope: "finance", tab: "Links" })
+        },
+        {
+          id: "finance-overdue",
+          label: "Overdue Invoices",
+          value: `${financePressure.overdueInvoices || 0}`,
+          subvalue: `${formatMoneyDisplay(financePressure.outstandingAmount || 0)} still open`,
+          count: Number(financePressure.overdueInvoices || 0),
+          highlightTone: highlightToneForCount(financePressure.overdueInvoices, "danger"),
+          action: () => onNavigate?.({ scope: "finance", tab: "Pinned", metricId: "finance-overdue" })
+        },
+        {
+          id: "finance-outstanding",
+          label: "Outstanding Amount",
+          value: formatMoneyDisplay(financePressure.outstandingAmount || 0),
+          subvalue: `${financePressure.pendingApprovals || 0} approvals waiting`,
+          count: Object.values(financePressure.outstandingAmount || {}).reduce((sum, amount) => sum + Number(amount || 0), 0),
+          highlightTone: highlightToneForCount(Object.values(financePressure.outstandingAmount || {}).reduce((sum, amount) => sum + Number(amount || 0), 0), "warning"),
+          action: () => onNavigate?.({ scope: "finance", tab: "Pinned", metricId: "finance-outstanding" })
+        },
+        {
+          id: "finance-reconcile",
+          label: "Reconcile Queue",
+          value: `${financePressure.reconcileQueue || 0}`,
+          subvalue: "Payments and expenses still need close-out",
+          count: Number(financePressure.reconcileQueue || 0),
+          highlightTone: highlightToneForCount(financePressure.reconcileQueue, "info"),
+          action: () => onNavigate?.({ scope: "finance", tab: "Links" })
+        }
+      ].sort((left, right) => pressureSortRank(left) - pressureSortRank(right))
+    : financeMetricCards;
+  const warehouseOverviewCards = canSeeWarehouse && warehousePressure
+    ? [
+        {
+          id: "warehouse-low-stock",
+          label: "Low Stock Items",
+          value: `${warehousePressure.lowStock || 0}`,
+          subvalue: `${warehousePressure.pendingPOCount || 0} open PO · ${warehousePressure.needsAttention || 0} need attention`,
+          count: Number(warehousePressure.lowStock || 0),
+          highlightTone: highlightToneForCount(warehousePressure.lowStock, "danger"),
+          action: () => onNavigate?.({ scope: "warehouse", tab: "Media", metricId: "warehouse-low-stock" })
+        },
+        {
+          id: "warehouse-pending-shipments",
+          label: "Pending Shipments",
+          value: `${warehousePressure.pendingShipments || 0}`,
+          subvalue: `${warehousePressure.pendingPOCount || 0} purchase order${Number(warehousePressure.pendingPOCount || 0) === 1 ? "" : "s"} still open`,
+          count: Number(warehousePressure.pendingShipments || 0),
+          highlightTone: highlightToneForCount(warehousePressure.pendingShipments, "warning"),
+          action: () => onNavigate?.({ scope: "warehouse", tab: "Pinned", metricId: "warehouse-in-transit" })
+        },
+        {
+          id: "warehouse-needs-attention",
+          label: "Needs Attention",
+          value: `${warehousePressure.needsAttention || 0}`,
+          subvalue: "Low stock and delivery pressure combined",
+          count: Number(warehousePressure.needsAttention || 0),
+          highlightTone: highlightToneForCount(warehousePressure.needsAttention, "warning"),
+          action: () => onNavigate?.({ scope: "warehouse", tab: "Media" })
+        }
+      ].sort((left, right) => pressureSortRank(left) - pressureSortRank(right))
+    : warehouseMetricCards;
+  const taskOverviewCards = taskPressure
+    ? [
+        {
+          id: "tasks-overdue",
+          label: "Overdue Tasks",
+          value: `${taskPressure.overdue || 0}`,
+          subvalue: "Assigned work is now slipping",
+          count: Number(taskPressure.overdue || 0),
+          highlightTone: highlightToneForCount(taskPressure.overdue, "danger"),
+          action: () => onNavigate?.({ scope: "tasks", taskView: "overdue" })
+        },
+        {
+          id: "tasks-due-today",
+          label: "Due Today",
+          value: `${taskPressure.dueToday || 0}`,
+          subvalue: "Tasks that need to land today",
+          count: Number(taskPressure.dueToday || 0),
+          highlightTone: highlightToneForCount(taskPressure.dueToday, "warning"),
+          action: () => onNavigate?.({ scope: "tasks", taskView: "today" })
+        },
+        {
+          id: "tasks-my",
+          label: "My Tasks",
+          value: `${taskPressure.myTasks || 0}`,
+          subvalue: "Assigned to you right now",
+          count: Number(taskPressure.myTasks || 0),
+          highlightTone: highlightToneForCount(taskPressure.myTasks, "info"),
+          action: () => onNavigate?.({ scope: "tasks", taskView: "my" })
+        },
+        {
+          id: "tasks-unassigned",
+          label: "Unassigned Tasks",
+          value: `${taskPressure.unassigned || 0}`,
+          subvalue: "Work without a clear owner",
+          count: Number(taskPressure.unassigned || 0),
+          highlightTone: highlightToneForCount(taskPressure.unassigned, "warning"),
+          action: () => onNavigate?.({ scope: "tasks", taskView: "unassigned" })
+        }
+      ].sort((left, right) => pressureSortRank(left) - pressureSortRank(right))
+    : [
+        {
+          id: "execution-overdue",
+          label: "Overdue Tasks",
+          value: `${executionSummary?.overdueTasks || 0}`,
+          subvalue: `${executionSummary?.inProgressTasks || 0} in progress`,
+          count: Number(executionSummary?.overdueTasks || 0),
+          highlightTone: highlightToneForCount(executionSummary?.overdueTasks, "danger"),
+          action: () => onNavigate?.({ scope: "tasks", taskView: "overdue" })
+        }
+      ];
+  const projectOverviewCards = projectPressure
+    ? [
+        {
+          id: "projects-with-overdue",
+          label: "Projects With Overdue Tasks",
+          value: `${projectPressure.withOverdueTasks || 0}`,
+          subvalue: `${projectPressure.active || 0} active project${Number(projectPressure.active || 0) === 1 ? "" : "s"} tracked`,
+          count: Number(projectPressure.withOverdueTasks || 0),
+          highlightTone: highlightToneForCount(projectPressure.withOverdueTasks, "danger"),
+          action: () => onNavigate?.({ scope: "projects" })
+        },
+        {
+          id: "projects-active",
+          label: "Active Projects",
+          value: `${projectPressure.active || 0}`,
+          subvalue: "Open coordination work across the workspace",
+          count: Number(projectPressure.active || 0),
+          highlightTone: highlightToneForCount(projectPressure.active, "info"),
+          action: () => onNavigate?.({ scope: "projects" })
+        }
+      ].sort((left, right) => pressureSortRank(left) - pressureSortRank(right))
+    : [
+        {
+          id: "execution-projects",
+          label: "Projects Needing Review",
+          value: `${executionSummary?.projectsNeedingAttention || 0}`,
+          subvalue: `${executionSummary?.activeProjects || 0} active project${Number(executionSummary?.activeProjects || 0) === 1 ? "" : "s"} tracked`,
+          count: Number(executionSummary?.projectsNeedingAttention || 0),
+          highlightTone: highlightToneForCount(executionSummary?.projectsNeedingAttention, "warning"),
+          action: () => onNavigate?.({ scope: "projects" })
+        }
+      ];
+  const enabledSections = [
+    canSeeFinance
+      ? {
+          id: "finance",
+          label: "Finance snapshot",
+          subtitle: "Approvals, overdue work, outstanding balances, and reconciliation pressure.",
+          metrics: financeOverviewCards,
+          actionLabel: "Open Finance",
+          action: () => onNavigate?.({ scope: "finance", tab: "Media" })
+        }
+      : null,
+    canSeeWarehouse
+      ? {
+          id: "warehouse",
+          label: "Warehouse snapshot",
+          subtitle: "Low stock, shipment pressure, and items that need follow-up.",
+          metrics: warehouseOverviewCards,
+          actionLabel: "Open Warehouse",
+          action: () => onNavigate?.({ scope: "warehouse", tab: "Media" })
+        }
+      : null,
+    {
+      id: "tasks",
+      label: "Task snapshot",
+      subtitle: "Assigned work, due dates, and accountability gaps for the team.",
+      metrics: taskOverviewCards,
+      actionLabel: "Open Tasks",
+      action: () => onNavigate?.({ scope: "tasks", taskView: "my" })
+    },
+    {
+      id: "projects",
+      label: "Project snapshot",
+      subtitle: "Project activity and overdue task pressure across active work.",
+      metrics: projectOverviewCards,
+      actionLabel: "Open Projects",
+      action: () => onNavigate?.({ scope: "projects" })
+    }
+  ].filter(Boolean);
+  const combinedPressureItems = [...financeOverviewCards, ...warehouseOverviewCards, ...taskOverviewCards, ...projectOverviewCards]
+    .map((item) => ({
+      id: item.id,
+      title: `${item.value} ${item.label.toLowerCase()}`,
+      detail: item.subvalue || "",
+      action: item.action,
+      count: item.count || 0
+    }))
+    .sort((left, right) => pressureSortRank(left) - pressureSortRank(right));
+  const urgentItems = combinedPressureItems.filter((item) => Number(item.count || 0) > 0).slice(0, 4);
+  const watchItems = combinedPressureItems.filter((item) => Number(item.count || 0) === 0).slice(0, 4);
+  const dashboardIntro =
+    overviewVariant === "finance"
+      ? "Keep track of invoices, collected cash, and finance work that needs attention."
+      : overviewVariant === "warehouse"
+        ? "Track stock pressure, shipment movement, and warehouse work that needs attention."
+        : overviewVariant === "execution"
+          ? "See which tasks and projects need owner attention before dropping into detailed execution work."
+        : overviewVariant === "both"
+          ? "Start here to see what needs attention across Finance and Warehouse before dropping into module workflows."
+          : "This workspace does not currently have module activity to show here.";
+  const urgentEmptyCopy =
+    overviewVariant === "finance"
+      ? "No urgent finance issues are open right now. Overdue invoices and recurring due items will appear here first."
+      : overviewVariant === "warehouse"
+        ? "No urgent warehouse issues are open right now. Delayed shipments and reorder pressure will appear here first."
+        : overviewVariant === "execution"
+          ? "No urgent task or project issues are open right now. Overdue execution work will appear here first."
+        : overviewVariant === "both"
+          ? "No urgent cross-workspace issues are open right now. This section will surface finance and warehouse items that need attention first."
+          : "Urgent items will appear here once this workspace starts using modules.";
+  const watchEmptyCopy =
+    overviewVariant === "finance"
+      ? "Routine finance follow-up will show here, including outstanding and partially paid invoices."
+      : overviewVariant === "warehouse"
+        ? "Routine warehouse follow-up will show here, including low stock and shipments in transit."
+        : overviewVariant === "execution"
+          ? "Routine task and project follow-up will show here after urgent items are handled."
+        : overviewVariant === "both"
+          ? "Routine finance and warehouse follow-up will show here after the urgent items are handled."
+          : "Watchlist items will appear here once module data starts flowing.";
+  const recentEmptyCopy =
+    overviewVariant === "finance"
+      ? "Recent finance operations will appear here as invoices and payments move through the workspace."
+      : overviewVariant === "warehouse"
+        ? "Recent warehouse operations will appear here as stock and shipments move through the workspace."
+      : overviewVariant === "both"
+          ? "Recent finance and warehouse activity will appear here as the workspace gets busier."
+          : "Recent operations will appear here once this workspace starts activity.";
+  const financeFeedItems = canSeeFinance
+    ? (financeActivity.length
+        ? financeActivity.slice(0, 8).map((entry) => {
+            const copy = financeActivityCopy(entry);
+            const isInvoice = entry.itemType === "invoice";
+            const isPaid = entry.action === "paid";
+            const isRecurring = entry.action === "recurring_issued";
+            const isExpense = entry.itemType === "expense";
+            return {
+              id: `overview-finance-activity-${entry.id}`,
+              sortAt: entry.createdAt,
+              category: "finance",
+              eyebrow: isRecurring ? "Finance · Recurring" : isExpense ? "Finance · Expense" : "Finance · Invoice",
+              title: copy.title,
+              detail: copy.body,
+              meta: relativeTime(entry.createdAt),
+              target: {
+                scope: "finance",
+                tab: isExpense ? "Media" : isRecurring ? "Media" : "Pinned",
+                metricId:
+                  isInvoice
+                    ? isPaid
+                      ? "finance-paid"
+                      : isRecurring
+                        ? "finance-overdue"
+                        : entry.action === "rejected" || entry.action === "approved"
+                      ? "finance-overdue"
+                      : "finance-outstanding"
+                    : "finance-expenses"
+              }
+            };
+          })
+        : recentPayments.slice(0, 4).map((payment) => ({
+            id: `overview-finance-payment-${payment.id}`,
+            sortAt: payment.recordedAt,
+            category: "finance",
+            eyebrow: "Finance · Payment",
+            title: `${payment.invoiceNumber} payment recorded`,
+            detail: `${payment.customerName} · ${formatMoney(payment.amount, payment.currency)} via ${formatPaymentMethod(payment.method)}`,
+            meta: relativeTime(payment.recordedAt),
+            target: { scope: "finance", tab: "Pinned", metricId: "finance-paid" }
+          })))
+    : [];
+  const crossModuleFeedItems = canSeeFinance && canSeeWarehouse
+    ? [
+        warehouseSummary?.reorderAttention && financeSummary?.outstandingInvoices
+          ? {
+              id: "overview-cross-reorder-cash",
+              sortAt: new Date().toISOString(),
+              category: "cross_module",
+              eyebrow: "Cross-module · Purchasing pressure",
+              title: "Low stock is now carrying finance impact",
+              detail: `${warehouseSummary.reorderAttention} reorder signal${warehouseSummary.reorderAttention === 1 ? "" : "s"} are active while ${financeSummary.outstandingInvoices} invoice${financeSummary.outstandingInvoices === 1 ? "" : "s"} stay open.`,
+              meta: "Review collections before replenishment pressure turns into spend pressure.",
+              target: { scope: "finance", tab: "Pinned", metricId: "finance-outstanding" }
+            }
+          : null,
+        warehouseSummary?.delayedOrders && (financeSummary?.overdueInvoices || financeSummary?.outstandingInvoices)
+          ? {
+              id: "overview-cross-delay-risk",
+              sortAt: new Date(Date.now() - 1000).toISOString(),
+              category: "cross_module",
+              eyebrow: "Cross-module · Customer risk",
+              title: "Shipment delay may affect collections",
+              detail: `${warehouseSummary.delayedOrders} delayed shipment${warehouseSummary.delayedOrders === 1 ? "" : "s"} are active alongside finance follow-up pressure.`,
+              meta: "Customer conversations may need operations and finance aligned.",
+              target: { scope: "warehouse", tab: "Pinned", metricId: "warehouse-in-transit" }
+            }
+          : null,
+        financeSummary?.recurringDueInvoices && warehouseSummary?.reorderAttention
+          ? {
+              id: "overview-cross-recurring-stock",
+              sortAt: new Date(Date.now() - 2000).toISOString(),
+              category: "cross_module",
+              eyebrow: "Cross-module · Timing",
+              title: "Billing work is due while stock pressure is active",
+              detail: `${financeSummary.recurringDueInvoices} recurring invoice${financeSummary.recurringDueInvoices === 1 ? "" : "s"} are due and ${warehouseSummary.reorderAttention} stock item${warehouseSummary.reorderAttention === 1 ? "" : "s"} still need replenishment.`,
+              meta: "Keep billing and fulfillment timing in sync.",
+              target: { scope: "finance", tab: "Media", metricId: "finance-overdue" }
+            }
+          : null
+      ].filter(Boolean)
+    : [];
+  const executionFeedItems = [
+    ...(executionSummary?.topOverdueTasks || []).map((task, index) => ({
+      id: `overview-execution-task-${task.id}`,
+      sortAt: new Date(Date.now() - index * 1200).toISOString(),
+      category: "execution",
+      eyebrow: "Execution · Overdue",
+      title: `${task.title} is overdue`,
+      detail: `${task.priority} priority${task.assigneeName ? ` · ${task.assigneeName}` : ""}`,
+      meta: "Task follow-up needed",
+      target: { scope: "tasks" }
+    })),
+    ...(executionSummary?.topProjects || []).map((project, index) => ({
+      id: `overview-execution-project-${project.id}`,
+      sortAt: new Date(Date.now() - (index + 4) * 1200).toISOString(),
+      category: "execution",
+      eyebrow: "Execution · Project",
+      title: `${project.name} needs review`,
+      detail: `${project.progress || 0}% complete${project.daysUntilDue != null ? ` · ${project.daysUntilDue < 0 ? "past due" : `${project.daysUntilDue} day${project.daysUntilDue === 1 ? "" : "s"} left`}` : ""}`,
+      meta: project.attentionReason === "low_completion" ? "Progress is light" : "Timing needs review",
+      target: { scope: "projects" }
+    }))
+  ];
+  const warehouseFeedItems = canSeeWarehouse
+    ? [
+        ...((warehouseSummary?.warehouseHandoffCues || []).slice(0, 2).map((cue, index) => ({
+          id: `overview-warehouse-handoff-feed-${cue.id}`,
+          sortAt: new Date(Date.now() - index * 1500).toISOString(),
+          category: canSeeFinance ? "cross_module" : "warehouse",
+          eyebrow: canSeeFinance ? "Cross-module · Warehouse" : "Warehouse · Handoff",
+          title: cue.title,
+          detail: cue.detail,
+          meta: cue.signal === "risk" ? "Review now" : cue.signal === "attention" ? "Needs planning" : "Worth watching",
+          target: { scope: "warehouse", tab: "Media", metricId: cue.targetMetricId || "warehouse-in-transit" }
+        }))),
+        ...(warehouseSummary?.lowStockProducts?.slice(0, 2) || []).map((product) => ({
+          id: `overview-warehouse-stock-${product.id}`,
+          sortAt: product.updatedAt || product.createdAt || new Date(0).toISOString(),
+          category: canSeeFinance ? "cross_module" : "warehouse",
+          eyebrow: canSeeFinance ? "Cross-module · Reorder" : "Warehouse · Reorder",
+          title: `${product.name} low stock`,
+          detail: `Gap ${product.stockGap || 0} · reorder ${product.reorderQuantity || 0} ${product.unit || "units"}`,
+          meta: product.updatedAt || product.createdAt ? relativeTime(product.updatedAt || product.createdAt) : "Needs attention",
+          target: { scope: "warehouse", tab: "Pinned", metricId: "warehouse-low-stock" }
+        })),
+        ...recentShipments.slice(0, 6).map((shipment) => ({
+          id: `overview-warehouse-shipment-${shipment.id}`,
+          sortAt: shipment.updatedAt || shipment.createdAt || shipment.estimatedDelivery || new Date(0).toISOString(),
+          category: "warehouse",
+          eyebrow: shipment.status === "delayed" ? "Warehouse · Delay" : shipment.status === "delivered" ? "Warehouse · Handoff" : "Warehouse · Shipment",
+          title: `${shipment.orderNumber} ${warehouseStatusLabel(shipment.status).toLowerCase()}`,
+          detail: `${shipment.destination} · ${warehouseShipmentTypeLabel(shipment.shipmentType)} · ${shipment.itemsCount || 1} item${Number(shipment.itemsCount || 1) === 1 ? "" : "s"}`,
+          meta: shipment.updatedAt || shipment.createdAt || shipment.estimatedDelivery ? relativeTime(shipment.updatedAt || shipment.createdAt || shipment.estimatedDelivery) : "Shipment update",
+          target: {
+            scope: "warehouse",
+            tab: shipment.status === "delivered" ? "Media" : "Pinned",
+            metricId: shipment.status === "delivered" ? "warehouse-delivered" : "warehouse-in-transit"
+          }
+        }))
+      ]
+    : [];
+  const operationsFeed = [...crossModuleFeedItems, ...executionFeedItems, ...financeFeedItems, ...warehouseFeedItems]
+    .sort((left, right) => new Date(right.sortAt).getTime() - new Date(left.sortAt).getTime())
+    .slice(0, 8);
+  const focusSequence = [
+    ...urgentItems.slice(0, 2).map((item, index) => ({
+      id: `focus-urgent-${item.id}`,
+      step: index + 1,
+      lane: "Urgent now",
+      title: item.title,
+      detail: item.detail,
+      action: item.action
+    })),
+    ...watchItems.slice(0, Math.max(0, 3 - Math.min(urgentItems.length, 2))).map((item, index) => ({
+      id: `focus-watch-${item.id}`,
+      step: Math.min(urgentItems.length, 2) + index + 1,
+      lane: "Watch next",
+      title: item.title,
+      detail: item.detail,
+      action: item.action
+    }))
+  ].slice(0, 3);
+  const headerPills = [
+    urgentItems.length ? `${urgentItems.length} urgent` : null,
+    watchItems.length ? `${watchItems.length} watchlist` : null,
+    operationsFeed.length ? `${operationsFeed.length} feed` : null
+  ].filter(Boolean);
+
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="mb-5">
+        <h3 className={`text-2xl font-bold ${financeMode ? "text-white" : "text-slate-900"}`}>Workspace overview</h3>
+        <p className={`mt-2 max-w-3xl text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+          {dashboardIntro}
+        </p>
+        {headerPills.length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {headerPills.map((pill) => (
+              <span
+                key={pill}
+                className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                style={
+                  financeMode
+                    ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#cbd5e1" }
+                    : { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1d4ed8" }
+                }
+              >
+                {pill}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        {!canManageOverview ? (
+          <p className={`mt-3 max-w-3xl text-sm ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+            This view stays lighter for non-manager roles and focuses on high-level workspace visibility.
+          </p>
+        ) : null}
+      </div>
+
+      {operationsBridgePanel ? <div className="mb-6">{operationsBridgePanel}</div> : null}
+
+      {focusSequence.length ? (
+        <div
+          className={`mb-6 rounded-[24px] p-5 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+          style={
+            financeMode
+              ? {
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                  boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                }
+              : undefined
+          }
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>Focus now</div>
+              <p className={`mt-2 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+                A simple sequence for what to review first across the workspace before you drop into the modules.
+              </p>
+            </div>
+            <div className={`rounded-full px-3 py-1 text-xs font-semibold ${financeMode ? "text-cyan-200" : "text-sky-700"}`} style={financeMode ? { background: "rgba(34,211,238,0.12)" } : { background: "#e0f2fe" }}>
+              {focusSequence.length} step{focusSequence.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 xl:grid-cols-3">
+            {focusSequence.map((item) => {
+              const Container = canManageOverview ? "button" : "div";
+              return (
+                <Container
+                  key={item.id}
+                  type={canManageOverview ? "button" : undefined}
+                  onClick={canManageOverview ? item.action : undefined}
+                  className="rounded-[18px] px-4 py-4 text-left"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>
+                        {item.lane}
+                      </div>
+                      <div className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                      <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className={`text-lg font-bold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.step}</div>
+                      {canManageOverview ? <div className="mt-1 text-xs font-semibold text-slate-500">Open</div> : null}
+                    </div>
+                  </div>
+                </Container>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <div className="space-y-6">
+          {enabledSections.map((section) => (
+            <div
+              key={section.id}
+              className={`rounded-[24px] p-5 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+              style={
+                financeMode
+                  ? {
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                      boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                    }
+                  : undefined
+              }
+            >
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>{section.label}</div>
+                  <p className={`mt-2 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>{section.subtitle}</p>
+                </div>
+                {canManageOverview ? (
+                  <button
+                    type="button"
+                    onClick={section.action}
+                    className="rounded-full px-3 py-2 text-xs font-semibold"
+                    style={
+                      financeMode
+                        ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.05)", color: "#e2e8f0" }
+                        : { border: "1px solid #dbeafe", background: "#eff6ff", color: "#1d4ed8" }
+                    }
+                  >
+                    {section.actionLabel}
+                  </button>
+                ) : null}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {section.metrics.map((metric) => (
+                  <OverviewStatCard
+                    key={metric.id}
+                    metric={metric}
+                    onSelect={onSelectMetric}
+                    onActivate={metric.action ? () => metric.action() : null}
+                    financeMode={financeMode}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="space-y-6">
+          <div
+            className={`rounded-[24px] p-5 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+            style={
+              financeMode
+                ? {
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                  }
+                : undefined
+            }
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-rose-300" : "text-rose-600"}`}>Urgent now</div>
+                <p className={`mt-2 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>Handle these first before moving into routine follow-up.</p>
+              </div>
+              {urgentItems.length ? (
+                <div className={`rounded-full px-3 py-1 text-xs font-semibold ${financeMode ? "text-rose-200" : "text-rose-700"}`} style={financeMode ? { background: "rgba(244,63,94,0.12)" } : { background: "#ffe4e6" }}>
+                  {urgentItems.length} priority
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-4 space-y-3">
+              {urgentItems.length ? urgentItems.map((item) => {
+                const Container = canManageOverview ? "button" : "div";
+                return (
+                <Container
+                  key={item.id}
+                  type={canManageOverview ? "button" : undefined}
+                  onClick={canManageOverview ? item.action : undefined}
+                  className="rounded-[18px] px-4 py-4"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className={`text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                      <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                    </div>
+                    {canManageOverview ? <div className="text-xs font-semibold text-slate-500">Open</div> : null}
+                  </div>
+                </Container>
+              )}) : (
+                <div
+                  className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  {urgentEmptyCopy}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`rounded-[24px] p-5 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+            style={
+              financeMode
+                ? {
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                  }
+                : undefined
+            }
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-amber-300" : "text-amber-700"}`}>Watchlist</div>
+                <p className={`mt-2 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>Important follow-up that is active, but not the first fire to put out.</p>
+              </div>
+              {watchItems.length ? (
+                <div className={`rounded-full px-3 py-1 text-xs font-semibold ${financeMode ? "text-amber-200" : "text-amber-700"}`} style={financeMode ? { background: "rgba(245,158,11,0.12)" } : { background: "#fef3c7" }}>
+                  {watchItems.length} watch
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-4 space-y-3">
+              {watchItems.length ? watchItems.map((item) => {
+                const Container = canManageOverview ? "button" : "div";
+                return (
+                <Container
+                  key={item.id}
+                  type={canManageOverview ? "button" : undefined}
+                  onClick={canManageOverview ? item.action : undefined}
+                  className="rounded-[18px] px-4 py-4"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className={`text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                      <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                    </div>
+                    {canManageOverview ? <div className="text-xs font-semibold text-slate-500">Open</div> : null}
+                  </div>
+                </Container>
+              )}) : (
+                <div
+                  className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  {watchEmptyCopy}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`rounded-[24px] p-5 ${financeMode ? "" : "border border-slate-200 bg-white shadow-sm"}`}
+            style={
+              financeMode
+                ? {
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                    boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                  }
+                : undefined
+            }
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>Operations feed</div>
+                <p className={`mt-2 text-sm ${financeMode ? "text-slate-400" : "text-slate-500"}`}>One timeline of the most meaningful finance and warehouse signals in this workspace.</p>
+              </div>
+              {operationsFeed.length ? (
+                <div className={`rounded-full px-3 py-1 text-xs font-semibold ${financeMode ? "text-cyan-200" : "text-sky-700"}`} style={financeMode ? { background: "rgba(34,211,238,0.12)" } : { background: "#e0f2fe" }}>
+                  Live feed
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-4 space-y-3">
+              {operationsFeed.length ? operationsFeed.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onNavigate?.(item.target)}
+                  className="rounded-[18px] px-4 py-4 text-left"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ background: operationsTimelineCategoryTone(item.category, financeMode) }}
+                        />
+                        <div className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${financeMode ? "text-cyan-300" : "text-slate-500"}`}>{item.eyebrow}</div>
+                      </div>
+                      <div className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                      <div className="mt-1 text-sm text-slate-500">{item.detail}</div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <div className="text-xs font-semibold text-slate-500">{item.meta}</div>
+                      {canManageOverview ? (
+                        <div className="mt-2 text-xs font-semibold text-slate-500">
+                          {item.target?.metricId ? "Open detail" : "Open module"}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </button>
+              )) : (
+                <div
+                  className="rounded-[18px] px-4 py-4 text-sm text-slate-500"
+                  style={
+                    financeMode
+                      ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)" }
+                      : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                  }
+                >
+                  {recentEmptyCopy}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- workspace/layout/WorkspacePane.jsx -----
 const FinanceAccountingAnalytics = lazy(() => import("./finance/FinanceAccountingAnalytics.jsx"));
+
+function CommandMenu({ items, activeIndex, onHoverItem, onInsertCommand }) {
+  return (
+    <div className="absolute bottom-full left-0 mb-3 w-full rounded-2xl border border-white/10 bg-[rgba(20,12,35,0.97)] p-2 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+      {items.map((item, index) => (
+        <button
+          key={item.command}
+          type="button"
+          onMouseEnter={() => onHoverItem(index)}
+          onClick={() => onInsertCommand(item.command)}
+          className={`flex w-full flex-col items-start rounded-xl px-3 py-3 text-left transition ${
+            activeIndex === index ? "bg-white/10" : "hover:bg-white/8"
+          }`}
+        >
+          <p className="text-sm font-bold text-white">{item.command}</p>
+          <p className="mt-1 text-xs text-slate-300">{item.description}</p>
+          <p className="mt-2 text-[11px] text-slate-400">{item.example}</p>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function HeaderAction({ children, onClick, financeMode = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded-full border px-3 py-1.5 text-xs font-semibold transition hover:-translate-y-0.5"
+      style={{
+        borderColor: financeMode ? "rgba(255,255,255,0.12)" : "rgba(15,23,42,0.08)",
+        background: financeMode ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.72)",
+        color: financeMode ? "#e2e8f0" : "#0f172a"
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function WorkspaceEmptyThreadState({ activeThread, financeMode }) {
+  const isBot = Boolean(activeThread?.isBot);
+  const isFinanceBot = activeThread?.botType === "finance" || activeThread?.id === "financebot";
+  const isWarehouseBot = activeThread?.botType === "warehouse" || activeThread?.id === "warebot";
+
+  let title = "Conversation ready";
+  let body = "This thread is ready for the first message.";
+
+  if (isFinanceBot) {
+    title = "No finance records yet";
+    body = "Create an invoice or log an expense to start the FinanceBot workflow in this workspace.";
+  } else if (isWarehouseBot) {
+    title = "No warehouse records yet";
+    body = "Create a stock alert or shipment to start the WareBot workflow in this workspace.";
+  } else if (!isBot) {
+    title = `No messages with ${activeThread?.name || "this member"} yet`;
+    body = "Send the first workspace message here. Personal chat stays separate from this workspace thread.";
+  }
+
+  return (
+    <div
+      className="grid min-h-[320px] place-items-center rounded-[24px] px-6 py-12 text-center"
+      style={
+        financeMode
+          ? {
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "linear-gradient(180deg,#111827 0%,#10192a 100%)"
+            }
+          : {
+              border: "1px solid #e2e8f0",
+              background: "#ffffff",
+              boxShadow: "0 8px 30px rgba(15,23,42,0.06)"
+            }
+      }
+    >
+      <div className="max-w-[460px]">
+        <div
+          className={`mx-auto flex h-14 w-14 items-center justify-center rounded-2xl text-2xl ${
+            financeMode ? "bg-white/5 text-slate-100" : "bg-slate-100 text-slate-600"
+          }`}
+        >
+          {isFinanceBot ? "💰" : isWarehouseBot ? "📦" : "💬"}
+        </div>
+        <h4 className={`mt-5 text-xl font-bold ${financeMode ? "text-white" : "text-slate-900"}`}>{title}</h4>
+        <p className={`mt-2 text-sm leading-6 ${financeMode ? "text-slate-400" : "text-slate-500"}`}>{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function WorkspacePane({
+  role,
+  activeNav,
+  activeThread,
+  activeTab,
+  setActiveTab,
+  draft,
+  setDraft,
+  reactions,
+  activePicker,
+  setActivePicker,
+  onReact,
+  resolveReactionUserName,
+  onSendText,
+  onRunCommand,
+  onSelectMetric,
+  metricCards,
+  financeActivity,
+  detailMetric,
+  setDetailMetric,
+  handlers,
+  financeMode,
+  onCloseWorkspace,
+  onUpgradeToRealWorkspace,
+  onWorkspaceLogout,
+  onRefreshFinanceData,
+  onLoadAccountingAccountDrilldown = null,
+  onExportAccountingStatement = null,
+  onExportAccountingJournals = null,
+  onLockFinancePeriod = null,
+  onUnlockFinancePeriod = null,
+  onCreateInvoice,
+  onCreateExpense,
+  onLoadWarehouseProductMovementReview = null,
+  onLoadWarehouseOrderReview = null,
+  onCreateWarehouseProductEntry = null,
+  onSavePurchaseOrder = null,
+  onSendPurchaseOrder = null,
+  onReceivePurchaseOrder = null,
+  onCancelPurchaseOrder = null,
+  financeCustomers = [],
+  financeVendors = [],
+  customerSuggestions = [],
+  vendorSuggestions = [],
+  categorySuggestions = [],
+  onSaveFinanceCustomer = null,
+  onSaveFinanceVendor = null,
+  workspaceAccessMode = "demo",
+  workspaceScope = "both",
+  activeWorkspace = null,
+  financeWorkspaces = [],
+  financeWorkspacesLoading = false,
+  financeSummary = null,
+  financeAccountingState = { enabled: false, enabledAt: null },
+  financeFxRates = null,
+  financeTaxSummary = null,
+  financeProfitLossReport = null,
+  financeCashFlowReport = null,
+  financeAgedReceivablesReport = null,
+  financeBalanceSheetReport = null,
+  financePayrollRecords = [],
+  financeAccountantSummary = null,
+  financeBankAccounts = [],
+  financeBankTransactions = {},
+  warehouseSummary = null,
+  warehouseAlerts = [],
+  warehousePurchaseOrders = [],
+  warehouseInventoryValueReport = null,
+  executionSummary = null,
+  overviewPressure = null,
+  warehouseProducts = [],
+  warehouseOrders = [],
+  activeWorkspaceMembership = null,
+  workspaceSettings = null,
+  workspaceSettingsLoading = false,
+  onSelectWorkspace = null,
+  platformWorkspaces = [],
+  platformWorkspacesLoading = false,
+  selectedPlatformWorkspace = null,
+  selectedPlatformWorkspaceId = null,
+  platformWorkspaceMembers = [],
+  platformWorkspaceMembersLoading = false,
+  platformCreatingWorkspace = false,
+  platformProvisioningMember = false,
+  platformSavingMemberId = null,
+  onSelectPlatformWorkspace = null,
+  onRefreshPlatformWorkspaces = null,
+  onRefreshPlatformWorkspaceMembers = null,
+  onCreatePlatformWorkspace = null,
+  onProvisionPlatformMember = null,
+  financePermissions,
+  financeMembers = [],
+  financeMembersLoading = false,
+  savingFinanceMemberId = null,
+  canManageFinanceMembers = false,
+  canBootstrapManageFinanceMembers = false,
+  onToggleFinanceMemberRole,
+  onUpdateFinanceMemberAccess,
+  onRefreshFinanceMembers,
+  onRefreshWorkspaceSettings,
+  onEnableWorkspaceAccounting = null,
+  workspaceAccountingEnabling = false,
+  onUpdateWorkspaceDefaultCurrency = null,
+  workspaceDefaultCurrencySaving = false,
+  workspaceDefaultCurrency = "USD",
+  onTogglePlatformFinanceRole = null,
+  onUpdatePlatformMemberAccess = null,
+  onOpenPersonalChat = null,
+  onLoadFinanceTaxSummary = null,
+  onLoadFinanceProfitLossReport = null,
+  onLoadFinanceCashFlowReport = null,
+  onLoadFinanceAgedReceivablesReport = null,
+  onLoadFinanceBalanceSheetReport = null,
+  onLoadFinanceFxRates = null,
+  onLoadFinanceInvoiceDetail = null,
+  onLoadFinanceExpenseDetail = null,
+  onCreateBankAccount = null,
+  onCreatePlaidBankAccount = null,
+  onUpdateBankAccount = null,
+  onDeleteBankAccount = null,
+  onCreateBankTransaction = null,
+  onSyncBankTransactions = null,
+  onSyncPlaidAccount = null,
+  onRefreshPlaidBalance = null,
+  onAutoMatchBankTransactions = null,
+  onMatchBankTransactionExpense = null,
+  onMatchBankTransactionPayment = null,
+  onReconcileBankTransaction = null,
+  onReconcileMatchedBankTransactions = null,
+  onCreatePayrollRecord = null,
+  onApprovePayrollRecord = null,
+  onPayPayrollRecord = null,
+  onCancelPayrollRecord = null,
+  onNavigateOverview = null,
+  onCreateTaskFromMessage = null,
+  onCreateProjectFromMessage = null,
+  projectLinkTargetMessage = null,
+  projectLinkSelectedProjectId = "",
+  projectLinkOptions = [],
+  projectLinkOptionsLoading = false,
+  projectLinkSubmitting = false,
+  onSelectProjectLink = null,
+  onAttachProjectMessage = null,
+  onConfirmProjectLink = null,
+  onCancelProjectLink = null,
+  workspaceNotifications = [],
+  workspaceNotificationCount = 0,
+  workspaceNotificationsLoading = false,
+  notificationTone = "neutral",
+  onRefreshWorkspaceNotifications = null,
+  onOpenWorkspaceNotification = null,
+  onMarkAllWorkspaceNotificationsRead = null,
+  markingAllWorkspaceNotificationsRead = false,
+  onInviteAccountant = null,
+  invitingAccountant = false,
+  setFinanceAccountingState = null
+}) {
+  const currentUser = useThreadList().currentUser;
+  const notifications = useNotifications();
+  const pushToast = notifications?.pushToast || (() => {});
+  const inputRef = useRef(null);
+  const quickActionMenuRef = useRef(null);
+  const toolbarOverflowMenuRef = useRef(null);
+  const notificationMenuRef = useRef(null);
+  const [commandMenuDismissed, setCommandMenuDismissed] = useState(false);
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0);
+  const [showRealWorkspaceConfirm, setShowRealWorkspaceConfirm] = useState(false);
+  const [showQuickActionMenu, setShowQuickActionMenu] = useState(false);
+  const [showToolbarOverflowMenu, setShowToolbarOverflowMenu] = useState(false);
+  const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+  const [financeEntryModal, setFinanceEntryModal] = useState(null);
+  const [financeEntryValues, setFinanceEntryValues] = useState({});
+  const [isFinanceEntrySubmitting, setIsFinanceEntrySubmitting] = useState(false);
+  const [financeEntryContext, setFinanceEntryContext] = useState(null);
+  const [financeContactSavingKind, setFinanceContactSavingKind] = useState(null);
+  const [paymentEntry, setPaymentEntry] = useState(null);
+  const [paymentEntryValues, setPaymentEntryValues] = useState({ amount: "", method: "bank_transfer", reference: "", note: "" });
+  const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
+  const [invoiceFilter, setInvoiceFilter] = useState({ customerId: "", status: "" });
+  const [expenseFilter, setExpenseFilter] = useState({ vendorId: "", status: "" });
+  const [reportingWindow, setReportingWindow] = useState("all");
+  const [issuingRecurringInvoiceId, setIssuingRecurringInvoiceId] = useState(null);
+  const [selectedAccountingAccountCode, setSelectedAccountingAccountCode] = useState("");
+  const [accountDrilldown, setAccountDrilldown] = useState(null);
+  const [accountDrilldownLoading, setAccountDrilldownLoading] = useState(false);
+  const [accountingExporting, setAccountingExporting] = useState("");
+  const [selectedLockPeriodKey, setSelectedLockPeriodKey] = useState("");
+  const [financeControlAction, setFinanceControlAction] = useState("");
+  const [financeSection, setFinanceSection] = useState("reports");
+  const [selectedFinanceRecord, setSelectedFinanceRecord] = useState(null);
+  const [selectedFinanceRecordDetail, setSelectedFinanceRecordDetail] = useState(null);
+  const [selectedFinanceRecordLoading, setSelectedFinanceRecordLoading] = useState(false);
+  const [financeHashRoute, setFinanceHashRoute] = useState(() => parseFinanceHashRoute());
+  const accountingPeriodSyncRef = useRef("all");
+  const commandItems = useMemo(
+    () => visibleCommandItems(role, draft, workspaceScope, financePermissions),
+    [role, draft, workspaceScope, financePermissions]
+  );
+  const showCommandMenu = draft.startsWith("/") && !commandMenuDismissed && commandItems.length > 0;
+  const warehouseMetricCards = useMemo(
+    () => metricCards.filter((metric) => metric.id.startsWith("warehouse-")),
+    [metricCards]
+  );
+  const financeMetricCards = useMemo(
+    () => metricCards.filter((metric) => metric.id.startsWith("finance-") || metric.id.startsWith("ops-")),
+    [metricCards]
+  );
+  const financeApprovalSections = useMemo(
+    () => (financeMode ? buildFinanceApprovalSections(activeThread.messages) : []),
+    [activeThread.messages, financeMode]
+  );
+  const financeQueueSummary = useMemo(
+    () => (financeMode ? buildFinanceQueueSummary(activeThread.messages) : null),
+    [activeThread.messages, financeMode]
+  );
+  const financeApprovalCount = useMemo(
+    () => financeApprovalSections.reduce((total, section) => total + section.items.length, 0),
+    [financeApprovalSections]
+  );
+  const canCreateLinkedWorkFromThread = Boolean(
+    workspaceAccessMode === "real" &&
+      activeThread?.isWorkspaceConversation &&
+      !activeThread?.isBot &&
+      activeThread?.conversationId &&
+      onCreateTaskFromMessage &&
+      onCreateProjectFromMessage
+  );
+  const linkedWorkMessages = useMemo(
+    () =>
+      (Array.isArray(activeThread?.messages) ? activeThread.messages : [])
+        .filter((message) => message.type === "system" && message.metadata?.linkedWork)
+        .map((message) => ({
+          id: message.id,
+          createdAt: message.createdAt,
+          ...message.metadata.linkedWork
+        })),
+    [activeThread?.messages]
+  );
+  const linkedWorkSummary = useMemo(() => {
+    const taskCount = linkedWorkMessages.filter((entry) => entry.kind === "task").length;
+    const projectCount = linkedWorkMessages.filter((entry) => entry.kind === "project").length;
+
+    return {
+      taskCount,
+      projectCount,
+      recent: linkedWorkMessages.slice(-3).reverse()
+    };
+  }, [linkedWorkMessages]);
+  const projectLinkTargetExcerpt = useMemo(
+    () => buildLinkedWorkExcerpt(projectLinkTargetMessage),
+    [projectLinkTargetMessage]
+  );
+  const financeInvoiceMessages = useMemo(
+    () => (financeMode ? activeThread.messages.filter((message) => message.type === "invoice") : []),
+    [activeThread.messages, financeMode]
+  );
+  const financeExpenseMessages = useMemo(
+    () => (financeMode ? activeThread.messages.filter((message) => message.type === "expense") : []),
+    [activeThread.messages, financeMode]
+  );
+  const filteredInvoiceMessages = useMemo(
+    () =>
+      financeInvoiceMessages.filter((message) => {
+        if (!isWithinReportingWindow(message.createdAt || message.metadata.dueDate, reportingWindow)) {
+          return false;
+        }
+        const customerId = message.metadata.customer?.id || "";
+        const status = message.metadata.status || "";
+        if (invoiceFilter.customerId && customerId !== invoiceFilter.customerId) {
+          return false;
+        }
+        if (invoiceFilter.status && status !== invoiceFilter.status) {
+          return false;
+        }
+        return true;
+      }),
+    [financeInvoiceMessages, invoiceFilter, reportingWindow]
+  );
+  const filteredExpenseMessages = useMemo(
+    () =>
+      financeExpenseMessages.filter((message) => {
+        if (!isWithinReportingWindow(message.metadata.expenseDate || message.createdAt, reportingWindow)) {
+          return false;
+        }
+        const vendorId = message.metadata.vendor?.id || "";
+        const status = message.metadata.status || "";
+        if (expenseFilter.vendorId && vendorId !== expenseFilter.vendorId) {
+          return false;
+        }
+        if (expenseFilter.status && status !== expenseFilter.status) {
+          return false;
+        }
+        return true;
+      }),
+    [expenseFilter, financeExpenseMessages, reportingWindow]
+  );
+  const recurringDueInvoices = useMemo(
+    () => filteredInvoiceMessages.filter((message) => Boolean(message.metadata.recurringDue)),
+    [filteredInvoiceMessages]
+  );
+  const partialPaymentInvoices = useMemo(
+    () => filteredInvoiceMessages.filter((message) => Array.isArray(message.metadata.payments) && message.metadata.payments.length > 0 && Number(message.metadata.outstandingAmount || 0) > 0),
+    [filteredInvoiceMessages]
+  );
+  const overdueInvoiceMessages = useMemo(
+    () => filteredInvoiceMessages.filter((message) => message.metadata.status === "overdue"),
+    [filteredInvoiceMessages]
+  );
+  const customerBalanceRows = useMemo(() => {
+    const rows = new Map();
+
+    filteredInvoiceMessages.forEach((message) => {
+      const outstandingAmount = Number(message.metadata.outstandingAmount || 0);
+      if (outstandingAmount <= 0) {
+        return;
+      }
+
+      const customerName = String(message.metadata.companyName || "Unassigned customer").trim();
+      const current = rows.get(customerName) || { name: customerName, outstandingAmount: 0, invoiceCount: 0 };
+      current.outstandingAmount += outstandingAmount;
+      current.invoiceCount += 1;
+      rows.set(customerName, current);
+    });
+
+    return [...rows.values()].sort((left, right) => right.outstandingAmount - left.outstandingAmount).slice(0, 5);
+  }, [filteredInvoiceMessages]);
+  const vendorUsageRows = useMemo(() => {
+    const rows = new Map();
+
+    filteredExpenseMessages.forEach((message) => {
+      const vendorName = String(message.metadata.vendorName || "Unassigned vendor").trim();
+      const current = rows.get(vendorName) || { name: vendorName, totalAmount: 0, expenseCount: 0 };
+      current.totalAmount += Number(message.metadata.amount || 0);
+      current.expenseCount += 1;
+      rows.set(vendorName, current);
+    });
+
+    return [...rows.values()].sort((left, right) => right.totalAmount - left.totalAmount).slice(0, 5);
+  }, [filteredExpenseMessages]);
+  const recurringLifecycleSummary = useMemo(() => ({
+    templates: filteredInvoiceMessages.filter((message) => message.metadata.recurring?.enabled && !message.metadata.recurringSourceInvoiceId).length,
+    generated: filteredInvoiceMessages.filter((message) => message.metadata.recurringSourceInvoiceId).length,
+    due: filteredInvoiceMessages.filter((message) => message.metadata.recurringDue).length
+  }), [filteredInvoiceMessages]);
+  const invoiceStatusBreakdown = useMemo(() => {
+    const breakdown = {
+      pending: 0,
+      approved: 0,
+      partial: 0,
+      paid: 0,
+      overdue: 0,
+      reconciled: 0,
+      rejected: 0
+    };
+
+    filteredInvoiceMessages.forEach((message) => {
+      const status = message.metadata.status || "pending";
+      if (Object.prototype.hasOwnProperty.call(breakdown, status)) {
+        breakdown[status] += 1;
+      }
+    });
+
+    return breakdown;
+  }, [filteredInvoiceMessages]);
+  const recentPaymentActivity = useMemo(
+    () =>
+      filteredInvoiceMessages
+        .flatMap((message) =>
+          (message.metadata.payments || []).map((payment) => ({
+            id: payment.id || `${message.metadata.invoiceId}-${payment.recordedAt || "payment"}`,
+            invoiceId: message.metadata.invoiceId,
+            invoiceNumber: message.metadata.invoiceNumber,
+            customerName: message.metadata.companyName,
+            amount: payment.amount,
+            currency: message.metadata.currency,
+            recordedAt: payment.recordedAt,
+            remainingBalance: payment.remainingBalance,
+            method: payment.method || "",
+            reference: payment.reference || "",
+            note: payment.note || "",
+            recordedBy: payment.recordedBy || null
+          }))
+        )
+        .sort((left, right) => new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime())
+        .slice(0, 8),
+    [filteredInvoiceMessages]
+  );
+  const selectedInvoiceMessage = selectedFinanceRecord?.kind === "invoice"
+    ? financeInvoiceMessages.find((message) => message.id === selectedFinanceRecord.messageId || (message.metadata.invoiceId || message.metadata.id) === selectedFinanceRecord.recordId) || null
+    : null;
+  const selectedExpenseMessage = selectedFinanceRecord?.kind === "expense"
+    ? financeExpenseMessages.find((message) => message.id === selectedFinanceRecord.messageId || (message.metadata.expenseId || message.metadata.id) === selectedFinanceRecord.recordId) || null
+    : null;
+  const financeRouteDetailKind = financeHashRoute?.section === "expenses" ? "expense" : financeHashRoute?.section === "invoices" ? "invoice" : "";
+  const recentShipmentEvents = useMemo(
+    () =>
+      (warehouseSummary?.recentShipmentActivity?.length
+        ? warehouseSummary.recentShipmentActivity
+        : warehouseOrders
+      )
+        .filter((order) => Boolean(order.updatedAt || order.createdAt || order.estimatedDelivery))
+        .sort((left, right) => new Date(right.updatedAt || right.createdAt || right.estimatedDelivery).getTime() - new Date(left.updatedAt || left.createdAt || left.estimatedDelivery).getTime())
+        .slice(0, 6),
+    [warehouseOrders, warehouseSummary]
+  );
+  const recurringTemplateHistory = useMemo(() => {
+    const generatedRunsBySource = new Map();
+    financeInvoiceMessages.forEach((message) => {
+      const sourceId = message.metadata.recurringSourceInvoiceId;
+      if (!sourceId) {
+        return;
+      }
+
+      const currentRuns = generatedRunsBySource.get(sourceId) || [];
+      currentRuns.push({
+        id: message.metadata.invoiceId,
+        invoiceNumber: message.metadata.invoiceNumber,
+        recurringSequence: Number(message.metadata.recurringSequence || 0),
+        amount: Number(message.metadata.amount || 0),
+        currency: message.metadata.currency || "USD",
+        createdAt: message.createdAt,
+        dueDate: message.metadata.dueDate,
+        statusLabel: normalizeFinanceInvoiceStatus(message.metadata.status || "pending")
+      });
+      generatedRunsBySource.set(sourceId, currentRuns);
+    });
+
+    return financeInvoiceMessages
+      .filter((message) => message.metadata.recurring?.enabled && !message.metadata.recurringSourceInvoiceId)
+      .map((message) => {
+        const allRuns = (generatedRunsBySource.get(message.metadata.invoiceId) || [])
+          .sort((left, right) => Number(right.recurringSequence || 0) - Number(left.recurringSequence || 0));
+        const visibleRuns = allRuns
+          .filter((run) => isWithinReportingWindow(run.createdAt || run.dueDate, reportingWindow));
+        const latestRun = allRuns[0] || null;
+
+        return {
+          id: message.metadata.invoiceId,
+          invoiceNumber: message.metadata.invoiceNumber,
+          customerName: message.metadata.customer?.name || message.metadata.companyName || "Unassigned customer",
+          nextIssueDate: message.metadata.recurring?.nextIssueDate || null,
+          lastIssuedAt: message.metadata.recurring?.lastIssuedAt || null,
+          dueNow: Boolean(message.metadata.recurringDue),
+          frequency: message.metadata.recurring?.frequency || "monthly",
+          interval: Number(message.metadata.recurring?.interval || 1),
+          amount: Number(message.metadata.amount || 0),
+          currency: message.metadata.currency || "USD",
+          generatedCount: allRuns.length,
+          latestRun,
+          generatedRuns: visibleRuns.slice(0, 3)
+        };
+      })
+      .filter((template) => reportingWindow === "all" || template.generatedRuns.length > 0 || isWithinReportingWindow(template.nextIssueDate, reportingWindow))
+      .sort((left, right) => {
+        if (left.dueNow !== right.dueNow) {
+          return left.dueNow ? -1 : 1;
+        }
+
+        return right.generatedCount - left.generatedCount;
+      })
+      .slice(0, 6);
+  }, [financeInvoiceMessages, reportingWindow]);
+
+  useEffect(() => {
+    if (!["invoices", "expenses"].includes(financeSection)) {
+      setSelectedFinanceRecord(null);
+      setSelectedFinanceRecordDetail(null);
+      setSelectedFinanceRecordLoading(false);
+    }
+  }, [financeSection]);
+
+  useEffect(() => {
+    function handleHashRouteChange() {
+      setFinanceHashRoute(parseFinanceHashRoute());
+    }
+
+    window.addEventListener("hashchange", handleHashRouteChange);
+    return () => {
+      window.removeEventListener("hashchange", handleHashRouteChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedFinanceRecord) {
+      return;
+    }
+    if (selectedFinanceRecord.kind === "invoice" && !selectedInvoiceMessage) {
+      setSelectedFinanceRecord(null);
+      setSelectedFinanceRecordDetail(null);
+    }
+    if (selectedFinanceRecord.kind === "expense" && !selectedExpenseMessage) {
+      setSelectedFinanceRecord(null);
+      setSelectedFinanceRecordDetail(null);
+    }
+  }, [selectedExpenseMessage, selectedFinanceRecord, selectedInvoiceMessage]);
+
+  async function handleSelectFinanceRecord(kind, message) {
+    if (!message?.metadata) {
+      return;
+    }
+
+    const recordId = kind === "invoice" ? (message.metadata.invoiceId || message.metadata.id) : (message.metadata.expenseId || message.metadata.id);
+    setSelectedFinanceRecord({
+      kind,
+      messageId: message.id,
+      recordId
+    });
+    setSelectedFinanceRecordDetail(null);
+    updateFinanceHashRoute(kind === "invoice" ? "invoices" : "expenses", recordId);
+    if (!recordId) {
+      return;
+    }
+
+    const loader = kind === "invoice" ? onLoadFinanceInvoiceDetail : onLoadFinanceExpenseDetail;
+    if (!loader) {
+      return;
+    }
+
+    setSelectedFinanceRecordLoading(true);
+    try {
+      const detail = await loader(recordId);
+      setSelectedFinanceRecordDetail(detail);
+    } finally {
+      setSelectedFinanceRecordLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!financeHashRoute?.recordId) {
+      return;
+    }
+
+    const kind = financeHashRoute.section === "expenses" ? "expense" : "invoice";
+    const sourceMessages = kind === "invoice" ? financeInvoiceMessages : financeExpenseMessages;
+    const matchedMessage = sourceMessages.find(
+      (message) => (kind === "invoice" ? (message.metadata.invoiceId || message.metadata.id) : (message.metadata.expenseId || message.metadata.id)) === financeHashRoute.recordId
+    );
+
+    setActiveTab("Media");
+    setFinanceSection(financeHashRoute.section);
+
+    if (matchedMessage && selectedFinanceRecord?.recordId !== financeHashRoute.recordId) {
+      void handleSelectFinanceRecord(kind, matchedMessage);
+      return;
+    }
+
+    if (!matchedMessage && selectedFinanceRecord?.recordId !== financeHashRoute.recordId) {
+      setSelectedFinanceRecord({
+        kind,
+        messageId: "",
+        recordId: financeHashRoute.recordId
+      });
+      setSelectedFinanceRecordLoading(true);
+      setSelectedFinanceRecordDetail(null);
+      const loader = kind === "invoice" ? onLoadFinanceInvoiceDetail : onLoadFinanceExpenseDetail;
+      Promise.resolve(loader?.(financeHashRoute.recordId))
+        .then((detail) => {
+          setSelectedFinanceRecordDetail(detail || null);
+        })
+        .finally(() => {
+          setSelectedFinanceRecordLoading(false);
+        });
+    }
+  }, [financeHashRoute, financeInvoiceMessages, financeExpenseMessages, onLoadFinanceExpenseDetail, onLoadFinanceInvoiceDetail, selectedFinanceRecord?.recordId]);
+  const paymentContextInvoices = useMemo(
+    () =>
+      filteredInvoiceMessages
+        .filter((message) => Number(message.metadata.outstandingAmount || 0) > 0 && Array.isArray(message.metadata.payments) && message.metadata.payments.length > 0)
+        .map((message) => {
+          const latestPayment = [...(message.metadata.payments || [])]
+            .sort((left, right) => new Date(right.recordedAt).getTime() - new Date(left.recordedAt).getTime())[0] || null;
+
+          return {
+            id: message.metadata.invoiceId,
+            invoiceNumber: message.metadata.invoiceNumber,
+            customerName: message.metadata.customer?.name || message.metadata.companyName || "Unassigned customer",
+            outstandingAmount: Number(message.metadata.outstandingAmount || 0),
+            currency: message.metadata.currency || "USD",
+            latestPayment
+          };
+        })
+        .sort((left, right) => right.outstandingAmount - left.outstandingAmount)
+        .slice(0, 4),
+    [filteredInvoiceMessages]
+  );
+  const showOperationsBridge = useMemo(
+    () => workspaceScope === "both" && canManageFinanceMembers,
+    [canManageFinanceMembers, workspaceScope]
+  );
+  const operationsBridgeTopCustomers = useMemo(
+    () => (financeSummary?.topCustomersOwed?.length ? financeSummary.topCustomersOwed : customerBalanceRows).slice(0, 3),
+    [customerBalanceRows, financeSummary]
+  );
+  const operationsBridgePanel = showOperationsBridge ? (
+    <OperationsBridgePanel
+      financeMode={financeMode}
+      financeSummary={financeSummary}
+      warehouseSummary={warehouseSummary}
+      executionSummary={executionSummary}
+      recentPayments={reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+        ? financeSummary.recentPayments
+        : recentPaymentActivity}
+      recentShipments={recentShipmentEvents}
+      topCustomers={operationsBridgeTopCustomers}
+      onSelectMetric={onSelectMetric}
+      onNavigate={onNavigateOverview}
+    />
+  ) : null;
+  const financeQuickActions = useMemo(
+    () => [
+      {
+        id: "new-invoice",
+        label: "New invoice",
+        description: "Prefill the composer to create a fresh finance invoice card.",
+        icon: "📄",
+        accent: "#10b981"
+      },
+      {
+        id: "log-expense",
+        label: "Log expense",
+        description: "Start a new expense entry from the finance composer.",
+        icon: "💳",
+        accent: "#38bdf8"
+      },
+      {
+        id: "open-approvals",
+        label: "Open approvals",
+        description: "Jump straight to the live approvals queue.",
+        icon: "✓",
+        accent: "#f59e0b"
+      },
+      {
+        id: "open-analytics",
+        label: "Open analytics",
+        description: "Review current finance metrics and recent activity.",
+        icon: "📊",
+        accent: "#22c55e"
+      }
+    ].filter((action) => {
+      if (action.id === "new-invoice" || action.id === "log-expense") {
+        return financePermissions?.canCreate;
+      }
+
+      return financePermissions?.canView;
+    }),
+    [financePermissions]
+  );
+  useEffect(() => {
+    if (!setFinanceAccountingState) {
+      return;
+    }
+    setFinanceAccountingState(resolveFinanceAccountingState(financeSummary, activeWorkspace, workspaceSettings));
+  }, [activeWorkspace, financeSummary, setFinanceAccountingState, workspaceSettings]);
+
+  const financeAccountingEnabled = financeAccountingState.enabled;
+  const financeAccountingEnabledAt = financeAccountingState.enabledAt;
+  const financeSections = useMemo(
+    () => {
+      const sections = [...FINANCE_MEDIA_SECTIONS];
+      if (financeAccountingEnabled) {
+        sections.push({ id: "accounting", label: "Accounting" });
+      }
+      if (financePermissions?.isAccountant) {
+        sections.push({ id: "accountant", label: "Accountant" });
+      }
+      return sections;
+    },
+    [financeAccountingEnabled, financePermissions?.isAccountant]
+  );
+  const canManageWarehouseStock =
+    workspaceAccessMode !== "real" ||
+    (Array.isArray(activeWorkspaceMembership?.modules) &&
+      activeWorkspaceMembership.modules.includes("warehouse") &&
+      activeWorkspaceMembership.status !== "suspended");
+  const accountingAccountCodes = useMemo(
+    () => new Set((financeSummary?.accountingStatements?.accountBalances || []).map((account) => account.code)),
+    [financeSummary]
+  );
+  const canManageFinanceControls =
+    financeAccountingEnabled &&
+    (activeWorkspaceMembership?.workspaceRole === "owner" || activeWorkspaceMembership?.workspaceRole === "manager");
+  const financeToolbarActions = useMemo(
+    () => [
+      {
+        id: "refresh-finance",
+        label: "Refresh finance data",
+        description: "Pull the latest invoices, expenses, metrics, and activity from the backend.",
+        icon: "↻",
+        accent: "#10b981"
+      },
+      {
+        id: "latest-activity",
+        label: "Jump to latest activity",
+        description: "Open Analytics to review the most recent FinanceBot actions.",
+        icon: "🕘",
+        accent: "#38bdf8"
+      },
+      {
+        id: "return-chat",
+        label: "Return to chat",
+        description: "Go back to the main FinanceBot conversation and composer.",
+        icon: "💬",
+        accent: "#a78bfa"
+      },
+      {
+        id: "clear-detail",
+        label: "Clear detail panel",
+        description: "Close the open metric detail drawer and return to the main workspace view.",
+        icon: "⊘",
+        accent: "#94a3b8"
+      }
+    ],
+    []
+  );
+  const visiblePinnedMetrics = financeMode ? financeMetricCards : metricCards;
+  const workspaceBotMode = isWorkspaceBotMode(activeThread, financeMode ? "finances" : activeThread?.botType === "warehouse" ? "warehouse" : "");
+  const showWorkspaceOverviewView = activeNav === "home";
+  const showWorkspaceMembersView = workspaceBotMode && activeNav === "users";
+  const headerAvatar = showWorkspaceOverviewView
+    ? { label: "◎", fg: financeMode ? "text-white" : "text-slate-700" }
+    : showWorkspaceMembersView
+    ? { label: "⚙", fg: financeMode ? "text-white" : "text-slate-700" }
+    : avatarForThread(activeThread);
+  const headerTitle = showWorkspaceOverviewView
+    ? "Workspace Overview"
+    : showWorkspaceMembersView
+      ? "Workspace Settings"
+      : activeThread.isBot
+        ? `${activeThread.id === "financebot" ? "💰" : "📦"} ${activeThread.name}`
+        : activeThread.name;
+  const headerSubtitle = showWorkspaceOverviewView
+    ? "Operational snapshot for owners and managers"
+    : showWorkspaceMembersView
+    ? "Workspace members, modules, and ownership"
+    : financeMode
+      ? `${activeThread.id === "financebot" ? "Finance Cockpit" : "Workspace"} • ${activeThread.online ? "Online" : "Offline"}`
+      : activeThread.online
+        ? "Online"
+        : "Offline";
+  const showHeaderEmail = !showWorkspaceMembersView && !showWorkspaceOverviewView && !activeThread.isBot && activeThread.linkedUserEmail;
+  const unreadNotificationLabel = workspaceNotificationCount > 99 ? "99+" : String(workspaceNotificationCount || 0);
+  const notificationBadgeStyles = buildNotificationToneStyles(notificationTone, financeMode);
+
+  useEffect(() => {
+    setActiveCommandIndex(0);
+    if (!draft.startsWith("/")) {
+      setCommandMenuDismissed(false);
+    }
+  }, [draft]);
+
+  useEffect(() => {
+    if (!financeAccountingEnabled && financeSection === "accounting") {
+      setFinanceSection("reports");
+    }
+  }, [financeAccountingEnabled, financeSection]);
+
+  useEffect(() => {
+    if (activeTab !== "Media" && financeSection !== "reports") {
+      setFinanceSection("reports");
+    }
+  }, [activeTab, financeSection]);
+
+  useEffect(() => {
+    setShowNotificationMenu(false);
+  }, [activeThread?.id, activeWorkspace?.id, showWorkspaceMembersView, showWorkspaceOverviewView]);
+
+  useEffect(() => {
+    if (!showNotificationMenu) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (notificationMenuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setShowNotificationMenu(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showNotificationMenu]);
+
+  useEffect(() => {
+    if (accountingPeriodSyncRef.current === reportingWindow) {
+      return;
+    }
+
+    accountingPeriodSyncRef.current = reportingWindow;
+    if (financeMode && financeSection === "accounting" && workspaceAccessMode === "real" && onRefreshFinanceData) {
+      void onRefreshFinanceData({ accountingPeriod: reportingWindow, toastOnSuccess: false });
+    }
+  }, [financeMode, financeSection, onRefreshFinanceData, reportingWindow, workspaceAccessMode]);
+
+  useEffect(() => {
+    if (!financeAccountingEnabled) {
+      setSelectedAccountingAccountCode("");
+      setAccountDrilldown(null);
+      return;
+    }
+
+    if (selectedAccountingAccountCode && !accountingAccountCodes.has(selectedAccountingAccountCode)) {
+      setSelectedAccountingAccountCode("");
+      setAccountDrilldown(null);
+    }
+  }, [accountingAccountCodes, financeAccountingEnabled, selectedAccountingAccountCode]);
+
+  useEffect(() => {
+    if (!selectedLockPeriodKey && financeSummary?.accountingControls?.currentPeriodKey) {
+      setSelectedLockPeriodKey(financeSummary.accountingControls.currentPeriodKey);
+    }
+  }, [financeSummary?.accountingControls?.currentPeriodKey, selectedLockPeriodKey]);
+
+  useEffect(() => {
+    if (
+      !financeAccountingEnabled ||
+      financeSection !== "accounting" ||
+      !selectedAccountingAccountCode ||
+      !financeMode ||
+      workspaceAccessMode !== "real" ||
+      !onLoadAccountingAccountDrilldown
+    ) {
+      setAccountDrilldown(null);
+      setAccountDrilldownLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setAccountDrilldownLoading(true);
+
+    void onLoadAccountingAccountDrilldown(selectedAccountingAccountCode, {
+      accountingPeriod: reportingWindow,
+      limit: 12
+    })
+      .then((payload) => {
+        if (!cancelled) {
+          setAccountDrilldown(payload || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAccountDrilldown(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAccountDrilldownLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [financeAccountingEnabled, financeMode, financeSection, onLoadAccountingAccountDrilldown, reportingWindow, selectedAccountingAccountCode, workspaceAccessMode]);
+
+  useEffect(() => {
+    if (!showQuickActionMenu) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (quickActionMenuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setShowQuickActionMenu(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showQuickActionMenu]);
+
+  useEffect(() => {
+    if (!showToolbarOverflowMenu) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (toolbarOverflowMenuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setShowToolbarOverflowMenu(false);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [showToolbarOverflowMenu]);
+
+  async function handleExportAccountingStatement() {
+    await handleExportAccountingStatementVariant("pack");
+  }
+
+  async function handleExportAccountingStatementVariant(variant = "pack") {
+    if (!financeAccountingEnabled || !financeMode || workspaceAccessMode !== "real" || accountingExporting || !onExportAccountingStatement) {
+      return;
+    }
+
+    setAccountingExporting(variant);
+
+    try {
+      const payload = await onExportAccountingStatement({
+        accountingPeriod: reportingWindow,
+        variant
+      });
+      const statementRows = Array.isArray(payload?.statementRows) ? payload.statementRows : [];
+      downloadCsvFile(
+        `${sanitizeDownloadPart(activeWorkspace?.name)}-${sanitizeDownloadPart(variant)}-${reportingWindow}.csv`,
+        [
+          { key: "section", label: "Section" },
+          { key: "label", label: "Label" },
+          { key: "value", label: "Current Value" },
+          { key: "previousValue", label: "Previous Value" },
+          { key: "delta", label: "Delta" },
+          { key: "direction", label: "Direction" },
+          { key: "accountCode", label: "Account Code" },
+          { key: "accountType", label: "Account Type" },
+          { key: "periodLabel", label: "Period" }
+        ],
+        statementRows
+      );
+      pushToast({
+        title: `${formatAccountingReportVariantLabel(variant)} CSV ready`,
+        body: `Downloaded the ${formatAccountingPeriodLabel(reportingWindow).toLowerCase()} ${formatAccountingReportVariantLabel(variant).toLowerCase()} table.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Statement export failed",
+        body: error?.message || "The accounting statement export could not be prepared."
+      });
+    } finally {
+      setAccountingExporting("");
+    }
+  }
+
+  async function handleExportAccountingJournals() {
+    if (!financeAccountingEnabled || !financeMode || workspaceAccessMode !== "real" || accountingExporting || !onExportAccountingJournals) {
+      return;
+    }
+
+    setAccountingExporting("journals");
+
+    try {
+      const payload = await onExportAccountingJournals({
+        accountingPeriod: reportingWindow,
+        limit: 150
+      });
+      const journalRows = Array.isArray(payload?.journalRows) ? payload.journalRows : [];
+      downloadCsvFile(
+        `${sanitizeDownloadPart(activeWorkspace?.name)}-accounting-journals-${reportingWindow}.csv`,
+        [
+          { key: "entryNumber", label: "Entry Number" },
+          { key: "postingDate", label: "Posting Date" },
+          { key: "status", label: "Status" },
+          { key: "entryType", label: "Entry Type" },
+          { key: "description", label: "Description" },
+          { key: "accountCode", label: "Account Code" },
+          { key: "accountName", label: "Account Name" },
+          { key: "accountType", label: "Account Type" },
+          { key: "debit", label: "Debit" },
+          { key: "credit", label: "Credit" },
+          { key: "totalDebit", label: "Entry Total Debit" },
+          { key: "totalCredit", label: "Entry Total Credit" },
+          { key: "createdBy", label: "Recorded By" },
+          { key: "sourceType", label: "Source Type" },
+          { key: "sourceId", label: "Source Id" },
+          { key: "periodLabel", label: "Period" }
+        ],
+        journalRows
+      );
+      pushToast({
+        title: "Journal CSV ready",
+        body: `Downloaded the ${formatAccountingPeriodLabel(reportingWindow).toLowerCase()} journal table for accountant review.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Journal export failed",
+        body: error?.message || "The journal export could not be prepared."
+      });
+    } finally {
+      setAccountingExporting("");
+    }
+  }
+
+  async function handleLockFinancePeriod(lockRequest) {
+    const periodKey = typeof lockRequest === "string" ? lockRequest : lockRequest?.periodKey;
+    const note = typeof lockRequest === "string" ? "" : String(lockRequest?.note || "").trim();
+    if (!periodKey || !onLockFinancePeriod || financeControlAction) {
+      return;
+    }
+
+    setFinanceControlAction("lock");
+    try {
+      await onLockFinancePeriod({ periodKey, note });
+      setSelectedLockPeriodKey(periodKey);
+      pushToast({
+        title: "Period locked",
+        body: note
+          ? `${formatPeriodKeyLabel(periodKey)} is now locked for finance posting changes. Review note saved.`
+          : `${formatPeriodKeyLabel(periodKey)} is now locked for finance posting changes.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Lock failed",
+        body: financeGuardrailMessage(error, "The accounting period could not be locked.")
+      });
+    } finally {
+      setFinanceControlAction("");
+    }
+  }
+
+  async function handleUnlockFinancePeriod(periodKey) {
+    if (!periodKey || !onUnlockFinancePeriod || financeControlAction) {
+      return;
+    }
+
+    setFinanceControlAction("unlock");
+    try {
+      await onUnlockFinancePeriod(periodKey);
+      setSelectedLockPeriodKey(periodKey);
+      pushToast({
+        title: "Period unlocked",
+        body: `${formatPeriodKeyLabel(periodKey)} is open for finance posting changes again.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unlock failed",
+        body: financeGuardrailMessage(error, "The accounting period could not be unlocked.")
+      });
+    } finally {
+      setFinanceControlAction("");
+    }
+  }
+
+  function handlePrintFinanceReport() {
+    if (!financeAccountingEnabled || typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    document.body.classList.add("finance-print-mode");
+
+    const cleanup = () => {
+      document.body.classList.remove("finance-print-mode");
+      window.removeEventListener("afterprint", cleanup);
+    };
+
+    window.addEventListener("afterprint", cleanup, { once: true });
+    window.setTimeout(() => {
+      try {
+        window.print();
+      } catch (error) {
+        cleanup();
+        pushToast({
+          title: "Print failed",
+          body: "The accounting print view could not be opened."
+        });
+      }
+    }, 40);
+  }
+
+  const insertCommand = (command) => {
+    setDraft(command);
+    setCommandMenuDismissed(false);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  function requestRealWorkspaceUpgrade() {
+    setShowRealWorkspaceConfirm(true);
+  }
+
+  function confirmRealWorkspaceUpgrade() {
+    setShowRealWorkspaceConfirm(false);
+    onUpgradeToRealWorkspace?.();
+  }
+
+  function openFinanceEntryModal(type, initialValues = {}, context = null) {
+    setShowQuickActionMenu(false);
+    setActiveTab("Chat");
+    const defaultCurrency = workspaceDefaultCurrency || "USD";
+
+    if (type === "invoice") {
+      setFinanceEntryValues({
+        invoiceNumber: "",
+        customerName: activeThread?.isBot ? "" : activeThread?.name || "",
+        customerEmail: "",
+        amount: "9800",
+        currency: defaultCurrency,
+        dueDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10),
+        note: "",
+        taxRate: "0",
+        taxLabel: "Tax",
+        recurringEnabled: false,
+        recurringFrequency: "monthly",
+        ...initialValues
+      });
+    } else {
+      setFinanceEntryValues({
+        amount: "",
+        currency: defaultCurrency,
+        category: "other",
+        expenseDate: todayDateInputValue(),
+        vendorName: activeThread?.isBot ? "" : activeThread?.name || "",
+        vendorEmail: "",
+        note: "",
+        taxRate: "0",
+        taxLabel: "Tax",
+        ...initialValues
+      });
+    }
+
+    setFinanceEntryContext(context);
+    setFinanceEntryModal(type);
+  }
+
+  function closeFinanceEntryModal() {
+    setFinanceEntryModal(null);
+    setFinanceEntryValues({});
+    setIsFinanceEntrySubmitting(false);
+    setFinanceEntryContext(null);
+  }
+
+  function openPaymentEntry(message) {
+    const remainingAmount = Number(message.metadata.outstandingAmount || message.metadata.amount || 0);
+    setPaymentEntry({
+      message,
+      invoiceId: message.metadata.invoiceId,
+      invoiceNumber: message.metadata.invoiceNumber,
+      amount: Number(message.metadata.amount || 0),
+      currency: message.metadata.currency || "USD",
+      customerName: message.metadata.companyName || "",
+      paidAmount: Number(message.metadata.paidAmount || 0),
+      outstandingAmount: remainingAmount
+    });
+    setPaymentEntryValues({
+      amount: remainingAmount > 0 ? String(remainingAmount) : "",
+      method: "bank_transfer",
+      reference: "",
+      note: ""
+    });
+  }
+
+  function closePaymentEntry() {
+    setPaymentEntry(null);
+    setPaymentEntryValues({ amount: "", method: "bank_transfer", reference: "", note: "" });
+    setIsPaymentSubmitting(false);
+  }
+
+  async function handleMarkPaidInvoice(message, paymentDetails = null) {
+    if (paymentDetails === null) {
+      openPaymentEntry(message);
+      return false;
+    }
+
+    const didRecordPayment = await handlers.onMarkPaidInvoice?.(message, paymentDetails);
+    if (didRecordPayment) {
+      closePaymentEntry();
+    }
+    return didRecordPayment;
+  }
+
+  async function handleSaveFinanceContact(kind, payload) {
+    const saveFn = kind === "customer" ? onSaveFinanceCustomer : onSaveFinanceVendor;
+    if (!saveFn) {
+      return false;
+    }
+
+    setFinanceContactSavingKind(kind);
+    try {
+      return await saveFn(payload);
+    } finally {
+      setFinanceContactSavingKind(null);
+    }
+  }
+
+  async function handleIssueRecurringInvoice(message) {
+    if (!handlers.onIssueRecurringInvoice || !message?.metadata?.invoiceId) {
+      return;
+    }
+
+    setIssuingRecurringInvoiceId(message.metadata.invoiceId);
+    try {
+      await handlers.onIssueRecurringInvoice(message);
+    } finally {
+      setIssuingRecurringInvoiceId(null);
+    }
+  }
+
+  function updateFinanceEntryValue(field, value) {
+    setFinanceEntryValues((current) => ({
+      ...current,
+      [field]: value
+    }));
+  }
+
+  async function handleFinanceEntryFile(file) {
+    if (!file) {
+      if (financeEntryModal === "invoice") {
+        updateFinanceEntryValue("attachment", null);
+      } else if (financeEntryModal === "expense") {
+        updateFinanceEntryValue("receipt", null);
+      }
+      return;
+    }
+
+    try {
+      const fileUrl = await readFileAsDataUrl(file);
+      const payload = {
+        fileName: file.name,
+        fileType: file.type || "application/octet-stream",
+        fileUrl
+      };
+
+      if (financeEntryModal === "invoice") {
+        updateFinanceEntryValue("attachment", payload);
+      } else if (financeEntryModal === "expense") {
+        updateFinanceEntryValue("receipt", payload);
+      }
+    } catch (error) {
+      setShowQuickActionMenu(false);
+      pushToast({
+        title: "Attachment failed",
+        body: error.message || "Unable to read the selected file."
+      });
+    }
+  }
+
+  function handleEditExpense(message) {
+    openFinanceEntryModal(
+      "expense",
+      {
+        expenseId: message.metadata.expenseId,
+        amount: String(message.metadata.totalWithTax ? ((message.metadata.subtotal ?? message.metadata.amount) || "") : (message.metadata.amount || "")),
+        currency: message.metadata.currency || workspaceDefaultCurrency || "USD",
+        category: message.metadata.category || "other",
+        expenseDate: message.metadata.expenseDate ? String(message.metadata.expenseDate).slice(0, 10) : todayDateInputValue(),
+        vendorName: message.metadata.vendorName || "",
+        vendorEmail: message.metadata.vendor?.email || "",
+        note: message.metadata.note || "",
+        taxRate: String(message.metadata.taxRate || 0),
+        taxLabel: message.metadata.taxLabel || "Tax",
+        receipt: message.metadata.receipt || null
+      },
+      {
+        expenseId: message.metadata.expenseId
+      }
+    );
+  }
+
+  function handleEditInvoice(message) {
+    openFinanceEntryModal(
+      "invoice",
+      {
+        invoiceId: message.metadata.invoiceId,
+        invoiceNumber: message.metadata.invoiceNumber || "",
+        customerName: message.metadata.customer?.name || message.metadata.companyName || "",
+        customerEmail: message.metadata.customer?.email || "",
+        amount: String((message.metadata.subtotal ?? message.metadata.amount) || ""),
+        currency: message.metadata.currency || workspaceDefaultCurrency || "USD",
+        dueDate: message.metadata.dueDate ? String(message.metadata.dueDate).slice(0, 10) : "",
+        note: message.metadata.note || "",
+        taxRate: String(message.metadata.taxRate || 0),
+        taxLabel: message.metadata.taxLabel || "Tax",
+        recurringEnabled: Boolean(message.metadata.recurring?.enabled),
+        recurringFrequency: message.metadata.recurring?.frequency || "monthly",
+        attachment: Array.isArray(message.metadata.attachments) ? message.metadata.attachments[0] || null : null
+      },
+      {
+        invoiceId: message.metadata.invoiceId
+      }
+    );
+  }
+
+  function handleQuickAction(actionId) {
+    if ((actionId === "new-invoice" || actionId === "log-expense") && !financePermissions?.canCreate) {
+      setShowQuickActionMenu(false);
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow creating or editing finance records."
+      });
+      return;
+    }
+
+    if (actionId === "new-invoice") {
+      openFinanceEntryModal("invoice");
+      return;
+    }
+
+    if (actionId === "log-expense") {
+      openFinanceEntryModal("expense");
+      return;
+    }
+
+    setShowQuickActionMenu(false);
+
+    if (actionId === "open-approvals") {
+      setActiveTab("Links");
+      return;
+    }
+
+    if (actionId === "open-analytics") {
+      setActiveTab("Media");
+    }
+  }
+
+  async function handleFinanceEntrySubmit() {
+    if (!financeEntryModal) {
+      return;
+    }
+
+    if (!financePermissions?.canCreate) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow creating or editing finance records."
+      });
+      return;
+    }
+
+    setIsFinanceEntrySubmitting(true);
+
+    try {
+      if (financeEntryModal === "invoice") {
+        const success = await onCreateInvoice?.({
+          invoiceId: financeEntryContext?.invoiceId || financeEntryValues.invoiceId || null,
+          invoiceNumber: financeEntryValues.invoiceNumber,
+          customerName: financeEntryValues.customerName || financeEntryValues.vendorName,
+          customerEmail: financeEntryValues.customerEmail,
+          amount: financeEntryValues.amount,
+          currency: financeEntryValues.currency || workspaceDefaultCurrency || "USD",
+          dueDate: financeEntryValues.dueDate,
+          note: financeEntryValues.note,
+          taxRate: financeEntryValues.taxRate || 0,
+          taxLabel: financeEntryValues.taxLabel || "Tax",
+          recurringEnabled: Boolean(financeEntryValues.recurringEnabled),
+          recurringFrequency: financeEntryValues.recurringFrequency || "monthly",
+          attachments: financeEntryValues.attachment ? [financeEntryValues.attachment] : []
+        });
+
+        if (success) {
+          closeFinanceEntryModal();
+        }
+        return;
+      }
+
+      const success = await onCreateExpense?.({
+        expenseId: financeEntryContext?.expenseId || financeEntryValues.expenseId || null,
+        amount: financeEntryValues.amount,
+        currency: financeEntryValues.currency || workspaceDefaultCurrency || "USD",
+        category: financeEntryValues.category,
+        expenseDate: financeEntryValues.expenseDate || todayDateInputValue(),
+        vendorName: financeEntryValues.vendorName,
+        vendorEmail: financeEntryValues.vendorEmail,
+        note: financeEntryValues.note,
+        taxRate: financeEntryValues.taxRate || 0,
+        taxLabel: financeEntryValues.taxLabel || "Tax",
+        receipt: financeEntryValues.receipt || null
+      });
+
+      if (success) {
+        closeFinanceEntryModal();
+      }
+    } finally {
+      setIsFinanceEntrySubmitting(false);
+    }
+  }
+
+  async function handleToolbarOverflowAction(actionId) {
+    setShowToolbarOverflowMenu(false);
+
+    if (actionId === "refresh-finance") {
+      await onRefreshFinanceData?.();
+      return;
+    }
+
+    if (actionId === "latest-activity") {
+      setDetailMetric(null);
+      setActiveTab("Media");
+      return;
+    }
+
+    if (actionId === "return-chat") {
+      setDetailMetric(null);
+      setActiveTab("Chat");
+      return;
+    }
+
+    if (actionId === "clear-detail") {
+      setDetailMetric(null);
+    }
+  }
+
+  return (
+    <section
+      className={`flex min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto ${financeMode ? "bg-[#0f1623]" : "bg-[#FBFCFF]"}`}
+      style={financeMode ? { color: "#f1f5f9" } : undefined}
+    >
+      <div className="flex min-h-0 min-w-[760px] flex-1 flex-col">
+        <div
+          className={`flex items-center justify-between px-6 py-4 ${financeMode ? "" : "border-b border-slate-200"}`}
+          style={financeMode ? { borderBottom: "1px solid rgba(255,255,255,0.05)", background: "rgba(6,10,18,0.9)" } : undefined}
+        >
+        <div className="flex items-center gap-3">
+          <div
+            className={`flex h-12 w-12 items-center justify-center rounded-2xl ${headerAvatar.fg}`}
+            style={
+              financeMode
+                ? {
+                    background: "rgba(16,185,129,0.12)",
+                    border: "1px solid rgba(16,185,129,0.26)",
+                    color: "#10b981"
+                  }
+                : undefined
+            }
+          >
+            {headerAvatar.label}
+          </div>
+          <div>
+            <h3
+              className={`${financeMode ? "text-white" : "text-slate-900"}`}
+              style={{ fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif', fontSize: 17, fontWeight: 700 }}
+            >
+              {headerTitle}
+            </h3>
+            <p className={`text-sm ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+              {headerSubtitle}
+            </p>
+            {showHeaderEmail ? (
+              <p className={`mt-1 text-xs ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+                {activeThread.linkedUserEmail}
+              </p>
+            ) : null}
+            {workspaceAccessMode === "real" && activeWorkspace ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span
+                  className="rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                  style={{
+                    borderColor: financeMode ? "rgba(16,185,129,0.22)" : "rgba(148,163,184,0.22)",
+                    background: financeMode ? "rgba(16,185,129,0.1)" : "rgba(15,23,42,0.06)",
+                    color: financeMode ? "#34d399" : "#334155"
+                  }}
+                >
+                  {activeWorkspace.name}
+                </span>
+                {activeWorkspaceMembership?.workspaceRole ? (
+                  <span className={`text-xs font-medium ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+                    {activeWorkspaceMembership.workspaceRole}
+                  </span>
+                ) : null}
+                {(Array.isArray(activeWorkspaceMembership?.modules) ? activeWorkspaceMembership.modules : []).map((moduleId) => (
+                  <span
+                    key={`active-module-${moduleId}`}
+                    className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    style={{
+                      borderColor: financeMode ? "rgba(255,255,255,0.08)" : "rgba(148,163,184,0.24)",
+                      background: financeMode ? "rgba(255,255,255,0.04)" : "rgba(15,23,42,0.05)",
+                      color: financeMode ? "#cbd5e1" : "#475569"
+                    }}
+                  >
+                    {moduleId}
+                  </span>
+                ))}
+                {workspaceSettings?.summary?.usesLegacyFallback ? (
+                  <span
+                    className="rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em]"
+                    style={{
+                      borderColor: "rgba(245,158,11,0.28)",
+                      background: "rgba(245,158,11,0.1)",
+                      color: "#fbbf24"
+                    }}
+                  >
+                    Legacy compatibility
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {financeMode ? (
+            <>
+              {workspaceAccessMode === "real" && financeWorkspaces.length ? (
+                <label
+                  className="flex items-center gap-2 rounded-2xl border px-3 py-2"
+                  style={{
+                    borderColor: "rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.05)"
+                  }}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Workspace</span>
+                  {financeWorkspaces.length > 1 ? (
+                    <select
+                      value={activeWorkspace?.id || ""}
+                      onChange={(event) => onSelectWorkspace?.(event.target.value)}
+                      disabled={financeWorkspacesLoading}
+                      className="bg-transparent text-sm font-semibold text-slate-50 outline-none"
+                    >
+                      {financeWorkspaces.map((entry) => (
+                        <option key={entry.workspace.id} value={entry.workspace.id} className="bg-slate-950 text-slate-50">
+                          {entry.workspace.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm font-semibold text-slate-50">{financeWorkspaces[0]?.workspace?.name || activeWorkspace.name}</span>
+                  )}
+                </label>
+              ) : null}
+              {onCloseWorkspace ? <HeaderAction financeMode onClick={onCloseWorkspace}>← Close</HeaderAction> : null}
+              {workspaceAccessMode === "demo" && onUpgradeToRealWorkspace ? (
+                <HeaderAction financeMode onClick={requestRealWorkspaceUpgrade}>Use Real Workspace</HeaderAction>
+              ) : null}
+              {workspaceAccessMode === "real" && onWorkspaceLogout ? (
+                <HeaderAction financeMode onClick={onWorkspaceLogout}>Logout</HeaderAction>
+              ) : null}
+              {financePermissions?.canView ? (
+                <HeaderAction financeMode onClick={() => setActiveTab("Media")}>📊 Report</HeaderAction>
+              ) : null}
+              {workspaceAccessMode === "real" && activeWorkspace ? (
+                <div className="relative" ref={notificationMenuRef}>
+                  <HeaderAction
+                    financeMode
+                    onClick={() => {
+                      setShowNotificationMenu((current) => !current);
+                      if (!showNotificationMenu) {
+                        void onRefreshWorkspaceNotifications?.();
+                      }
+                    }}
+                  >
+                    <span className="relative inline-flex items-center gap-2">
+                      <span>🔔 Inbox</span>
+                      {workspaceNotificationCount > 0 ? (
+                        <span
+                          className="inline-flex min-w-[22px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-bold"
+                          style={notificationBadgeStyles}
+                        >
+                          {unreadNotificationLabel}
+                        </span>
+                      ) : null}
+                    </span>
+                  </HeaderAction>
+                  {showNotificationMenu ? (
+                    <WorkspaceNotificationMenu
+                      financeMode
+                      unreadCount={workspaceNotificationCount}
+                      notifications={workspaceNotifications}
+                      loading={workspaceNotificationsLoading}
+                      onOpenNotification={(notification) => {
+                        setShowNotificationMenu(false);
+                        void onOpenWorkspaceNotification?.(notification);
+                      }}
+                      onMarkAllRead={() => onMarkAllWorkspaceNotificationsRead?.()}
+                      markAllLoading={markingAllWorkspaceNotificationsRead}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+              {financeQuickActions.length ? (
+                <div className="relative" ref={quickActionMenuRef}>
+                  <HeaderAction financeMode onClick={() => setShowQuickActionMenu((current) => !current)}>⚡ Quick Action ▾</HeaderAction>
+                  {showQuickActionMenu ? (
+                    <QuickActionMenu items={financeQuickActions} onSelect={handleQuickAction} />
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="relative" ref={toolbarOverflowMenuRef}>
+                <HeaderAction financeMode onClick={() => setShowToolbarOverflowMenu((current) => !current)}>···</HeaderAction>
+                {showToolbarOverflowMenu ? (
+                  <ToolbarOverflowMenu items={financeToolbarActions} onSelect={handleToolbarOverflowAction} />
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              {workspaceBotMode && onCloseWorkspace ? <HeaderAction onClick={onCloseWorkspace}>← Close</HeaderAction> : null}
+              {workspaceBotMode && workspaceAccessMode === "demo" && onUpgradeToRealWorkspace ? (
+                <HeaderAction onClick={requestRealWorkspaceUpgrade}>Use Real Workspace</HeaderAction>
+              ) : null}
+              {workspaceBotMode && workspaceAccessMode === "real" && onWorkspaceLogout ? (
+                <HeaderAction onClick={onWorkspaceLogout}>Logout</HeaderAction>
+              ) : null}
+              {!workspaceBotMode && activeThread.linkedUserId && onOpenPersonalChat ? (
+                <HeaderAction onClick={() => onOpenPersonalChat(activeThread.linkedUserId)}>
+                  Personal chat
+                </HeaderAction>
+              ) : null}
+              <HeaderAction>Call</HeaderAction>
+              <HeaderAction>Video</HeaderAction>
+              {workspaceAccessMode === "real" && activeWorkspace ? (
+                <div className="relative" ref={notificationMenuRef}>
+                  <HeaderAction
+                    onClick={() => {
+                      setShowNotificationMenu((current) => !current);
+                      if (!showNotificationMenu) {
+                        void onRefreshWorkspaceNotifications?.();
+                      }
+                    }}
+                  >
+                    <span className="relative inline-flex items-center gap-2">
+                      <span>Bell</span>
+                      {workspaceNotificationCount > 0 ? (
+                        <span
+                          className="inline-flex min-w-[22px] items-center justify-center rounded-full border px-1.5 py-0.5 text-[10px] font-bold"
+                          style={notificationBadgeStyles}
+                        >
+                          {unreadNotificationLabel}
+                        </span>
+                      ) : null}
+                    </span>
+                  </HeaderAction>
+                  {showNotificationMenu ? (
+                    <WorkspaceNotificationMenu
+                      unreadCount={workspaceNotificationCount}
+                      notifications={workspaceNotifications}
+                      loading={workspaceNotificationsLoading}
+                      onOpenNotification={(notification) => {
+                        setShowNotificationMenu(false);
+                        void onOpenWorkspaceNotification?.(notification);
+                      }}
+                      onMarkAllRead={() => onMarkAllWorkspaceNotificationsRead?.()}
+                      markAllLoading={markingAllWorkspaceNotificationsRead}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <HeaderAction>Bell</HeaderAction>
+              )}
+              <HeaderAction>Search</HeaderAction>
+              <HeaderAction>Tools</HeaderAction>
+            </>
+          )}
+        </div>
+        </div>
+
+        {!showWorkspaceMembersView && !showWorkspaceOverviewView ? (
+          <div
+            className="px-6"
+            style={financeMode ? { borderBottom: "1px solid rgba(255,255,255,0.04)", background: "rgba(6,10,18,0.7)" } : { borderBottom: "1px solid #e2e8f0" }}
+          >
+            <div className="flex gap-4 py-3">
+            {FILTER_TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`px-0 py-2 text-sm font-semibold transition ${financeMode ? "rounded-none border-b-2" : "rounded-full px-4"}`}
+                style={
+                  financeMode
+                    ? activeTab === tab
+                      ? { color: "#fff", borderBottomColor: "#10b981" }
+                      : { color: "#475569", borderBottomColor: "transparent" }
+                    : activeTab === tab
+                      ? { background: "#E8F2FF", color: "#2D8EFF" }
+                      : { color: "#64748b" }
+                }
+              >
+                {displayTabLabel(tab, financeMode)}
+              </button>
+            ))}
+            </div>
+          </div>
+        ) : null}
+
+        <div className="relative flex min-h-0 flex-1">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {showWorkspaceMembersView ? (
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              {workspaceAccessMode === "real" && canBootstrapManageFinanceMembers ? (
+                <PlatformOwnerProvisioningPanel
+                  currentUser={currentUser}
+                  workspaces={platformWorkspaces}
+                  loading={platformWorkspacesLoading}
+                  selectedWorkspaceId={selectedPlatformWorkspaceId}
+                  onSelectWorkspace={onSelectPlatformWorkspace}
+                  onRefresh={onRefreshPlatformWorkspaces}
+                  onCreateWorkspace={onCreatePlatformWorkspace}
+                  creatingWorkspace={platformCreatingWorkspace}
+                  onProvisionMember={onProvisionPlatformMember}
+                  provisioningMember={platformProvisioningMember}
+                />
+              ) : null}
+              {workspaceAccessMode === "real" && !canBootstrapManageFinanceMembers ? (
+                <WorkspaceAdminOverviewPanel
+                  workspace={activeWorkspace}
+                  membership={activeWorkspaceMembership}
+                  settings={workspaceSettings}
+                  accountingEnabled={financeAccountingEnabled}
+                  accountingEnabledAt={financeAccountingEnabledAt}
+                  loading={workspaceSettingsLoading}
+                  onRefresh={onRefreshWorkspaceSettings}
+                  onEnableAccounting={onEnableWorkspaceAccounting}
+                  enablingAccounting={workspaceAccountingEnabling}
+                  onUpdateDefaultCurrency={onUpdateWorkspaceDefaultCurrency}
+                  savingDefaultCurrency={workspaceDefaultCurrencySaving}
+                  onInviteAccountant={onInviteAccountant}
+                  invitingAccountant={invitingAccountant}
+                  members={financeMembers}
+                />
+              ) : null}
+              <div className={workspaceAccessMode === "real" ? "mt-6" : ""}>
+              <WorkspaceMemberAccessPanel
+                members={canBootstrapManageFinanceMembers ? platformWorkspaceMembers : financeMembers}
+                loading={canBootstrapManageFinanceMembers ? platformWorkspaceMembersLoading : financeMembersLoading}
+                canManage={canManageFinanceMembers}
+                canBootstrapManage={canBootstrapManageFinanceMembers}
+                workspaceScope={workspaceScope}
+                currentUserId={currentUser.id}
+                savingMemberId={canBootstrapManageFinanceMembers ? platformSavingMemberId : savingFinanceMemberId}
+                onToggleRole={canBootstrapManageFinanceMembers ? onTogglePlatformFinanceRole : onToggleFinanceMemberRole}
+                onUpdateWorkspaceAccess={canBootstrapManageFinanceMembers ? onUpdatePlatformMemberAccess : onUpdateFinanceMemberAccess}
+                onRefresh={canBootstrapManageFinanceMembers ? onRefreshPlatformWorkspaceMembers : onRefreshFinanceMembers}
+              />
+              </div>
+            </div>
+          ) : null}
+
+          {showWorkspaceOverviewView ? (
+            <WorkspaceOverviewPanel
+              financeMode={financeMode}
+              workspaceScope={workspaceScope}
+              overviewPressure={overviewPressure}
+              financeMetricCards={financeMetricCards.filter((metric) => metric.id.startsWith("finance-"))}
+              warehouseMetricCards={warehouseMetricCards}
+              financeActivity={financeActivity}
+              financeSummary={financeSummary}
+              warehouseSummary={warehouseSummary}
+              executionSummary={executionSummary}
+              recentPayments={reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                ? financeSummary.recentPayments
+                : recentPaymentActivity}
+              recentShipments={recentShipmentEvents}
+              operationsBridgePanel={operationsBridgePanel}
+              onSelectMetric={onSelectMetric}
+              onNavigate={onNavigateOverview}
+              canManageOverview={canManageFinanceMembers}
+            />
+          ) : null}
+
+          {activeTab === "Chat" && !showWorkspaceMembersView && !showWorkspaceOverviewView ? (
+            <>
+              <div className="flex-1 overflow-y-auto px-6 py-6" style={financeMode ? { background: "#0f1623" } : undefined}>
+                {workspaceBotMode && workspaceAccessMode === "demo" ? (
+                  <div
+                    className="mb-4 rounded-[20px] p-4"
+                    style={{
+                      border: "1px solid rgba(16,185,129,0.16)",
+                      background: "rgba(16,185,129,0.08)"
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        letterSpacing: "0.18em",
+                        textTransform: "uppercase",
+                        color: "#10b981",
+                        fontWeight: 700
+                      }}
+                    >
+                      Demo Workspace
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.6, color: financeMode ? "#cbd5e1" : "#334155" }}>
+                      You are viewing the demo version. Switch once to use the real workspace from now on.
+                    </div>
+                    {onUpgradeToRealWorkspace ? (
+                      <button
+                        type="button"
+                        onClick={requestRealWorkspaceUpgrade}
+                        style={{
+                          marginTop: 14,
+                          height: 40,
+                          borderRadius: 12,
+                          border: "1px solid rgba(16,185,129,0.34)",
+                          background: "linear-gradient(135deg,#10b981,#059669)",
+                          color: "#fff",
+                          fontWeight: 700,
+                          padding: "0 16px",
+                          cursor: "pointer"
+                        }}
+                      >
+                        Use Real Workspace
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {financeMode ? (
+                  <FinanceHeroStrip metrics={financeMetricCards} onSelect={onSelectMetric} />
+                ) : null}
+                {financeMode && financeQueueSummary ? (
+                  <div className="mb-6">
+                    <FinanceQueueSummary summary={financeQueueSummary} />
+                  </div>
+                ) : null}
+                <div className={`space-y-5 ${financeMode ? "max-w-[820px]" : ""}`}>
+                  {projectLinkTargetMessage ? (
+                    <div
+                      className={`rounded-[22px] px-5 py-4 ${
+                        financeMode
+                          ? "border border-white/8 bg-white/[0.04]"
+                          : "border border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+                            Attach to project
+                          </p>
+                          <p className={`mt-1 text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-800"}`}>
+                            Link this message to an existing project
+                          </p>
+                          <p className={`mt-2 text-sm leading-6 ${financeMode ? "text-slate-300" : "text-slate-600"}`}>
+                            {projectLinkTargetExcerpt || "This message will be linked to the selected project for later review."}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={onCancelProjectLink}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                              financeMode
+                                ? "border border-white/10 bg-white/5 text-slate-200"
+                                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+                            }`}
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onNavigateOverview?.({ scope: "projects" })}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                              financeMode
+                                ? "border border-white/10 bg-white/5 text-slate-200"
+                                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+                            }`}
+                          >
+                            Open Projects
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-wrap items-center gap-3">
+                        <select
+                          value={projectLinkSelectedProjectId}
+                          onChange={(event) => onSelectProjectLink?.(event.target.value)}
+                          disabled={projectLinkOptionsLoading || projectLinkSubmitting}
+                          className={`min-w-[260px] rounded-2xl border px-4 py-3 text-sm outline-none ${
+                            financeMode
+                              ? "border-white/10 bg-slate-950 text-slate-100"
+                              : "border-slate-200 bg-white text-slate-700"
+                          }`}
+                        >
+                          <option value="">
+                            {projectLinkOptionsLoading ? "Loading projects..." : "Select a project"}
+                          </option>
+                          {projectLinkOptions.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name} · {project.status}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={onConfirmProjectLink}
+                          disabled={!projectLinkSelectedProjectId || projectLinkSubmitting || projectLinkOptionsLoading}
+                          className={`rounded-full px-4 py-2 text-sm font-semibold text-white ${
+                            !projectLinkSelectedProjectId || projectLinkSubmitting || projectLinkOptionsLoading
+                              ? "bg-slate-400"
+                              : "bg-[#2D8EFF]"
+                          }`}
+                        >
+                          {projectLinkSubmitting ? "Attaching..." : "Attach to project"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {linkedWorkMessages.length ? (
+                    <div
+                      className={`rounded-[22px] px-5 py-4 ${
+                        financeMode
+                          ? "border border-white/8 bg-white/[0.04]"
+                          : "border border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-400" : "text-slate-500"}`}>
+                            Linked work
+                          </p>
+                          <p className={`mt-1 text-sm ${financeMode ? "text-slate-200" : "text-slate-700"}`}>
+                            {linkedWorkSummary.taskCount} task{linkedWorkSummary.taskCount === 1 ? "" : "s"} and {linkedWorkSummary.projectCount} project{linkedWorkSummary.projectCount === 1 ? "" : "s"} are now linked from this conversation.
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => onNavigateOverview?.({ scope: "tasks" })}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                              financeMode
+                                ? "border border-white/10 bg-white/5 text-slate-200"
+                                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+                            }`}
+                          >
+                            Open Tasks
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onNavigateOverview?.({ scope: "projects" })}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                              financeMode
+                                ? "border border-white/10 bg-white/5 text-slate-200"
+                                : "border border-slate-200 bg-white text-slate-600 shadow-sm"
+                            }`}
+                          >
+                            Open Projects
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {linkedWorkSummary.recent.map((entry) => (
+                          <button
+                            type="button"
+                            key={`linked-work-${entry.id}`}
+                            onClick={() => onNavigateOverview?.({ scope: entry.kind === "project" ? "projects" : "tasks" })}
+                            className={`rounded-full px-3 py-1 text-[11px] font-semibold ${
+                              financeMode
+                                ? "bg-white/6 text-slate-200 ring-1 ring-white/10"
+                                : "bg-white text-slate-600 ring-1 ring-slate-200"
+                            }`}
+                          >
+                            {entry.kind === "project" ? "Project" : "Task"} · {entry.title}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {activeThread.messages.length ? (
+                    activeThread.messages.map((message) => (
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        currentUser={currentUser}
+                        currentThread={activeThread}
+                        role={role}
+                        financeMode={financeMode}
+                        reactions={reactions}
+                        activePicker={activePicker}
+                        setActivePicker={setActivePicker}
+                        onReact={onReact}
+                        resolveReactionUserName={resolveReactionUserName}
+                        onApproveInvoice={handlers.onApproveInvoice}
+                        onEditInvoice={handleEditInvoice}
+                        onStartRejectInvoice={handlers.onStartRejectInvoice}
+                        onRejectReasonChange={handlers.onRejectReasonChange}
+                        onConfirmRejectInvoice={handlers.onConfirmRejectInvoice}
+                        onReorderStart={handlers.onReorderStart}
+                        onReorderChange={handlers.onReorderChange}
+                        onReorderConfirm={handlers.onReorderConfirm}
+                        onDismissStockAlert={handlers.onDismissStockAlert}
+                        onMarkDelivered={handlers.onMarkDelivered}
+                        onUpdateShipmentStatus={handlers.onUpdateWarehouseOrderStatus}
+                        onExpenseNoteChange={handlers.onExpenseNoteChange}
+                        onLogExpense={handlers.onLogExpense}
+                        onApproveExpense={handlers.onApproveExpense}
+                        onStartRejectExpense={handlers.onStartRejectExpense}
+                        onRejectExpenseChange={handlers.onRejectExpenseChange}
+                        onConfirmRejectExpense={handlers.onConfirmRejectExpense}
+                        onStartReimburseExpense={handlers.onStartReimburseExpense}
+                        onReimburseExpenseChange={handlers.onReimburseExpenseChange}
+                        onConfirmReimburseExpense={handlers.onConfirmReimburseExpense}
+                        onEditExpense={handleEditExpense}
+                        financePermissions={financePermissions}
+                        showFinanceAccounting={financeAccountingEnabled}
+                        onMarkPaidInvoice={handleMarkPaidInvoice}
+                        onDownloadInvoicePdf={handlers.onDownloadInvoicePdf}
+                        downloadingInvoicePdfId={handlers.downloadingInvoicePdfId}
+                        onIssueRecurringInvoice={handlers.onIssueRecurringInvoice}
+                        onReconcileInvoice={handlers.onReconcileInvoice}
+                        onReconcileExpense={handlers.onReconcileExpense}
+                        canManageFinanceMembers={canManageFinanceMembers}
+                        canCreateLinkedWork={canCreateLinkedWorkFromThread}
+                        onCreateTaskFromMessage={onCreateTaskFromMessage}
+                        onCreateProjectFromMessage={onCreateProjectFromMessage}
+                        onAttachProjectMessage={onAttachProjectMessage}
+                      />
+                    ))
+                  ) : (
+                    <WorkspaceEmptyThreadState activeThread={activeThread} financeMode={financeMode} />
+                  )}
+                </div>
+              </div>
+
+              <div
+                className="px-6 py-5"
+                style={financeMode ? { borderTop: "1px solid rgba(255,255,255,0.05)", background: "rgba(6,10,18,0.7)" } : { borderTop: "1px solid #e2e8f0" }}
+              >
+                <div
+                  className="relative rounded-2xl px-4 py-4"
+                  style={
+                    financeMode
+                      ? {
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.05)",
+                          boxShadow: "0 12px 30px rgba(0,0,0,0.25)"
+                        }
+                      : {
+                          border: "1px solid #e2e8f0",
+                          background: "#fff",
+                          boxShadow: "0 1px 3px rgba(15,23,42,0.08)"
+                        }
+                  }
+                >
+                  {showCommandMenu ? (
+                    <CommandMenu
+                      items={commandItems}
+                      activeIndex={activeCommandIndex}
+                      onHoverItem={setActiveCommandIndex}
+                      onInsertCommand={insertCommand}
+                    />
+                  ) : null}
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      if (draft.startsWith("/")) {
+                        onRunCommand(draft);
+                      } else {
+                        onSendText();
+                      }
+                    }}
+                    className="flex items-center gap-3"
+                  >
+                    <input
+                      ref={inputRef}
+                      value={draft}
+                      onChange={(event) => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (!showCommandMenu) {
+                          return;
+                        }
+
+                        if (event.key === "ArrowDown") {
+                          event.preventDefault();
+                          setActiveCommandIndex((current) => (current + 1) % commandItems.length);
+                          return;
+                        }
+
+                        if (event.key === "ArrowUp") {
+                          event.preventDefault();
+                          setActiveCommandIndex((current) => (current - 1 + commandItems.length) % commandItems.length);
+                          return;
+                        }
+
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          insertCommand(commandItems[activeCommandIndex].command);
+                          return;
+                        }
+
+                        if (event.key === "Escape") {
+                          event.preventDefault();
+                          setCommandMenuDismissed(true);
+                        }
+                      }}
+                      placeholder='Type "/" for commands'
+                      className={`min-w-0 flex-1 border-none bg-transparent text-sm outline-none ${financeMode ? "text-slate-100 placeholder:text-slate-500" : "text-slate-700 placeholder:text-slate-400"}`}
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-full px-5 py-2.5 text-sm font-bold text-white shadow-sm transition"
+                      style={financeMode ? { background: "linear-gradient(135deg,#10b981,#059669)" } : { background: "#2D8EFF" }}
+                    >
+                      Send
+                    </button>
+                  </form>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {activeTab === "Media" && !showWorkspaceMembersView && !showWorkspaceOverviewView ? (
+            financeMode ? (
+              <div className="workspace-finance-shell flex-1 overflow-y-auto px-6 py-6">
+                <div className="mb-4">
+                  <h3 className="text-xl font-bold text-white">Finance workspace</h3>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Review workflow pressure, customer records, payments, and accounting only when you need it.
+                  </p>
+                </div>
+                <div className="workspace-finance-nav mb-6 flex flex-wrap gap-2">
+                  {financeSections.map((section) => (
+                    <button
+                      key={section.id}
+                      type="button"
+                      onClick={() => setFinanceSection(section.id)}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                        financeSection === section.id
+                          ? "text-white"
+                          : "text-slate-400 hover:text-slate-100"
+                      }`}
+                      style={
+                        financeSection === section.id
+                          ? {
+                              background: "linear-gradient(135deg, rgba(16,185,129,0.24), rgba(14,116,144,0.2))",
+                              border: "1px solid rgba(16,185,129,0.32)"
+                            }
+                          : {
+                              background: "rgba(255,255,255,0.04)",
+                              border: "1px solid rgba(255,255,255,0.08)"
+                            }
+                      }
+                    >
+                      {section.label}
+                    </button>
+                  ))}
+                </div>
+                {financeSection === "reports" ? (
+                  <>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-3">
+                      <div className="text-sm text-slate-300">
+                        {financeFxRates?.live
+                          ? `Live rates as of ${formatDateTime(financeFxRates.timestamp)}`
+                          : "Approximate rates (static)"}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onLoadFinanceFxRates?.({ refresh: true })}
+                        className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
+                      >
+                        Refresh rates
+                      </button>
+                    </div>
+                    {operationsBridgePanel ? <div className="mb-6">{operationsBridgePanel}</div> : null}
+                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {financeMetricCards.map((metric) => (
+                          <StatCard key={metric.id} metric={metric} onSelect={onSelectMetric} financeMode />
+                        ))}
+                      </div>
+                      <div>
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <div>
+                            <h4 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">Recent Activity</h4>
+                            <p className="mt-1 text-sm text-slate-500">Audit trail from FinanceBot actions.</p>
+                          </div>
+                        </div>
+                        <FinanceActivityFeed actions={financeActivity.slice(0, 8)} />
+                      </div>
+                    </div>
+                    <div className="mt-6">
+                      <FinanceReportingSnapshot
+                        statusBreakdown={reportingWindow === "all" && financeSummary?.invoiceStatusBreakdown
+                          ? financeSummary.invoiceStatusBreakdown
+                          : invoiceStatusBreakdown}
+                        recurringSummary={{
+                          templates: recurringLifecycleSummary.templates,
+                          generated: reportingWindow === "all" && typeof financeSummary?.recurringGeneratedInvoices === "number"
+                            ? financeSummary.recurringGeneratedInvoices
+                            : recurringLifecycleSummary.generated,
+                          due: recurringLifecycleSummary.due
+                        }}
+                        recentPayments={reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                          ? financeSummary.recentPayments
+                          : recentPaymentActivity}
+                        recurringTemplates={recurringTemplateHistory}
+                      />
+                    </div>
+                    <FinanceAdvancedReportsPanel
+                      workspaceDefaultCurrency={workspaceDefaultCurrency}
+                      financeSummary={financeSummary}
+                      financeTaxSummary={financeTaxSummary}
+                      financeProfitLossReport={financeProfitLossReport}
+                      financeCashFlowReport={financeCashFlowReport}
+                      financeAgedReceivablesReport={financeAgedReceivablesReport}
+                      financeBalanceSheetReport={financeBalanceSheetReport}
+                      onLoadFinanceTaxSummary={onLoadFinanceTaxSummary}
+                      onLoadFinanceProfitLossReport={onLoadFinanceProfitLossReport}
+                      onLoadFinanceCashFlowReport={onLoadFinanceCashFlowReport}
+                      onLoadFinanceAgedReceivablesReport={onLoadFinanceAgedReceivablesReport}
+                      onLoadFinanceBalanceSheetReport={onLoadFinanceBalanceSheetReport}
+                    />
+                  </>
+                ) : null}
+                {(financeSection === "invoices" || financeSection === "expenses") ? (
+                  <div className="mb-6">
+                    <FinanceFilterToolbar
+                      customerOptions={financeCustomers.filter((customer) => customer.status !== "inactive")}
+                      vendorOptions={financeVendors.filter((vendor) => vendor.status !== "inactive")}
+                      invoiceFilter={invoiceFilter}
+                      expenseFilter={expenseFilter}
+                      reportingWindow={reportingWindow}
+                      onInvoiceFilterChange={(field, value) => setInvoiceFilter((current) => ({ ...current, [field]: value }))}
+                      onExpenseFilterChange={(field, value) => setExpenseFilter((current) => ({ ...current, [field]: value }))}
+                      onReportingWindowChange={setReportingWindow}
+                    />
+                  </div>
+                ) : null}
+                {financeSection === "invoices" ? (
+                  <>
+                    <div className={`grid gap-6 ${financeRouteDetailKind === "invoice" ? "" : "xl:grid-cols-[minmax(0,0.95fr)_minmax(340px,1.05fr)]"}`}>
+                      {financeRouteDetailKind === "invoice" ? null : (
+                      <div className="space-y-6">
+                        <FinanceRecordDigest
+                          title="Invoice workflow"
+                          subtitle="Review invoices by customer, status, and payment state."
+                          items={filteredInvoiceMessages.slice(0, 8)}
+                          kind="invoice"
+                          selectedItemId={selectedInvoiceMessage?.id || ""}
+                          onSelectItem={(item) => handleSelectFinanceRecord("invoice", item)}
+                        />
+                        <FinanceOperationalInsights
+                          recurringDueInvoices={recurringDueInvoices.map((message) => ({
+                            id: message.metadata.invoiceId,
+                            invoiceNumber: message.metadata.invoiceNumber,
+                            companyName: message.metadata.companyName,
+                            recurring: message.metadata.recurring
+                          }))}
+                          partialPaymentInvoices={partialPaymentInvoices.map((message) => ({
+                            id: message.metadata.invoiceId,
+                            invoiceNumber: message.metadata.invoiceNumber,
+                            companyName: message.metadata.companyName,
+                            currency: message.metadata.currency,
+                            outstandingAmount: message.metadata.outstandingAmount,
+                            payments: message.metadata.payments || []
+                          }))}
+                          topCustomers={financeSummary?.topCustomersOwed?.length ? financeSummary.topCustomersOwed : customerBalanceRows}
+                          topVendors={financeSummary?.topVendors?.length ? financeSummary.topVendors : vendorUsageRows}
+                          canIssueRecurring={financePermissions?.canEdit}
+                          issuingInvoiceId={issuingRecurringInvoiceId}
+                          onIssueRecurring={(invoice) => handleIssueRecurringInvoice({ metadata: { invoiceId: invoice.id } })}
+                        />
+                      </div>
+                      )}
+                      <div>
+                        {(selectedInvoiceMessage || selectedFinanceRecordDetail) ? (
+                          selectedFinanceRecordLoading ? (
+                            <div className="rounded-[24px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                              Loading invoice detail...
+                            </div>
+                          ) : (
+                            <FinanceInvoiceDetailPanel
+                              detail={selectedFinanceRecordDetail}
+                              message={selectedInvoiceMessage}
+                              canApprove={financePermissions?.canApprove}
+                              canMarkPaid={financePermissions?.canEdit}
+                              canReconcile={financePermissions?.canReconcile}
+                              downloadingPdf={handlers.downloadingInvoicePdfId === (selectedInvoiceMessage?.metadata?.invoiceId || selectedFinanceRecordDetail?.id)}
+                              onBack={() => {
+                                setSelectedFinanceRecord(null);
+                                setSelectedFinanceRecordDetail(null);
+                                updateFinanceHashRoute("", "");
+                              }}
+                              onApprove={handlers.onApproveInvoice}
+                              onReject={handlers.onConfirmRejectInvoice}
+                              onRecordPayment={handleMarkPaidInvoice}
+                              onReconcile={handlers.onReconcileInvoice}
+                              onDownloadPdf={handlers.onDownloadInvoicePdf}
+                            />
+                          )
+                        ) : (
+                          <div className="rounded-[24px] border border-white/8 bg-white/5 px-5 py-5 text-sm text-slate-400">
+                            Select an invoice to open the full detail screen, payment history, and accounting context.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                ) : null}
+                {financeSection === "expenses" ? (
+                  <div className={`grid gap-6 ${financeRouteDetailKind === "expense" ? "" : "xl:grid-cols-[minmax(0,0.95fr)_minmax(340px,1.05fr)]"}`}>
+                    {financeRouteDetailKind === "expense" ? null : (
+                    <div className="space-y-6">
+                      <FinanceRecordDigest
+                        title="Expense workflow"
+                        subtitle="Review expense approvals, reimbursement state, and reconciliation work."
+                        items={filteredExpenseMessages.slice(0, 8)}
+                        kind="expense"
+                        selectedItemId={selectedExpenseMessage?.id || ""}
+                        onSelectItem={(item) => handleSelectFinanceRecord("expense", item)}
+                      />
+                      <div
+                        className="rounded-[26px] border border-white/8 bg-white/[0.04] px-5 py-5"
+                      >
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Expense snapshot</div>
+                        <div className="mt-4 space-y-4">
+                          <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Pending approval</div>
+                            <div className="mt-2 text-2xl font-bold text-white">
+                              {financeSummary?.pendingExpenses ?? filteredExpenseMessages.filter((message) => message.metadata.status === "pending_review").length}
+                            </div>
+                          </div>
+                          <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Reconcile queue</div>
+                            <div className="mt-2 text-2xl font-bold text-white">
+                              {financeQueueSummary?.reconcileCount || 0}
+                            </div>
+                          </div>
+                          <div className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4">
+                            <div className="text-xs uppercase tracking-[0.16em] text-slate-500">Tracked vendors</div>
+                            <div className="mt-2 text-2xl font-bold text-white">{financeVendors.length}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    )}
+                    <div>
+                      {(selectedExpenseMessage || selectedFinanceRecordDetail) ? (
+                        selectedFinanceRecordLoading ? (
+                          <div className="rounded-[24px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                            Loading expense detail...
+                          </div>
+                        ) : (
+                          <FinanceExpenseDetailPanel
+                            detail={selectedFinanceRecordDetail}
+                            message={selectedExpenseMessage}
+                            canApprove={canManageFinanceMembers}
+                            canEdit={financePermissions?.canEdit}
+                            canReconcile={financePermissions?.canReconcile}
+                            onBack={() => {
+                              setSelectedFinanceRecord(null);
+                              setSelectedFinanceRecordDetail(null);
+                              updateFinanceHashRoute("", "");
+                            }}
+                            onApprove={handlers.onApproveExpense}
+                            onReject={handlers.onConfirmRejectExpense}
+                            onReimburse={handlers.onConfirmReimburseExpense}
+                            onReconcile={handlers.onReconcileExpense}
+                          />
+                        )
+                      ) : (
+                        <div className="rounded-[24px] border border-white/8 bg-white/5 px-5 py-5 text-sm text-slate-400">
+                          Select an expense to open the full detail screen, receipt, and accounting context.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+                {financeSection === "customers" ? (
+                  <>
+                    <FinanceRelationshipSummary customers={financeCustomers} vendors={financeVendors} />
+                    <div className="mt-6 grid gap-6 xl:grid-cols-2">
+                      <FinanceContactManagerPanel
+                        title="Customer records"
+                        kind="customer"
+                        items={financeCustomers}
+                        accent="#10b981"
+                        saving={financeContactSavingKind === "customer"}
+                        canManage={financePermissions?.canCreate}
+                        onSave={(payload) => handleSaveFinanceContact("customer", payload)}
+                      />
+                      <FinanceContactManagerPanel
+                        title="Vendor records"
+                        kind="vendor"
+                        items={financeVendors}
+                        accent="#38bdf8"
+                        saving={financeContactSavingKind === "vendor"}
+                        canManage={financePermissions?.canCreate}
+                        onSave={(payload) => handleSaveFinanceContact("vendor", payload)}
+                      />
+                    </div>
+                  </>
+                ) : null}
+                {financeSection === "payments" ? (
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
+                    <div className="rounded-[26px] border border-white/8 bg-white/[0.04] px-5 py-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Recent payments</div>
+                          <div className="mt-1 text-sm text-slate-400">Latest settled invoice activity across the workspace.</div>
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-3">
+                        {(reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                          ? financeSummary.recentPayments
+                          : recentPaymentActivity
+                        ).slice(0, 8).map((payment, index) => (
+                          <div
+                            key={`finance-payment-row-${payment.id || payment.invoiceId || index}`}
+                            className="rounded-[18px] border border-white/8 bg-slate-950/40 px-4 py-4"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-white">{payment.invoiceNumber || payment.companyName || "Invoice payment"}</div>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  {(payment.customerName || payment.companyName || "Customer")} · {formatPaymentMethod(payment.method)}
+                                </div>
+                              </div>
+                              <div className="text-sm font-semibold text-emerald-300">
+                                {formatMoney(payment.amount || 0, payment.currency || "USD")}
+                              </div>
+                            </div>
+                            <div className="mt-2 text-xs text-slate-500">
+                              {payment.reference ? `${payment.reference} · ` : ""}{formatDateTime(payment.recordedAt || payment.createdAt || new Date().toISOString())}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-6">
+                      <FinanceActivityFeed actions={financeActivity.filter((action) => ["paid", "reconciled"].includes(action.action)).slice(0, 8)} />
+                      <FinanceOperationalInsights
+                        recurringDueInvoices={[]}
+                        partialPaymentInvoices={partialPaymentInvoices.map((message) => ({
+                          id: message.metadata.invoiceId,
+                          invoiceNumber: message.metadata.invoiceNumber,
+                          companyName: message.metadata.companyName,
+                          currency: message.metadata.currency,
+                          outstandingAmount: message.metadata.outstandingAmount,
+                          payments: message.metadata.payments || []
+                        }))}
+                        topCustomers={financeSummary?.topCustomersOwed?.length ? financeSummary.topCustomersOwed : customerBalanceRows}
+                        topVendors={financeSummary?.topVendors?.length ? financeSummary.topVendors : vendorUsageRows}
+                        canIssueRecurring={false}
+                        issuingInvoiceId={null}
+                        onIssueRecurring={() => {}}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                {financeSection === "banks" ? (
+                  <FinanceBankingPanel
+                    workspaceDefaultCurrency={workspaceDefaultCurrency}
+                    bankAccounts={financeBankAccounts}
+                    bankTransactions={financeBankTransactions}
+                    financeFxRates={financeFxRates}
+                    expenses={filteredExpenseMessages}
+                    payments={reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                      ? financeSummary.recentPayments
+                      : recentPaymentActivity}
+                    onCreateBankAccount={onCreateBankAccount}
+                    onCreatePlaidBankAccount={onCreatePlaidBankAccount}
+                    onUpdateBankAccount={onUpdateBankAccount}
+                    onDeleteBankAccount={onDeleteBankAccount}
+                    onCreateBankTransaction={onCreateBankTransaction}
+                    onSyncBankTransactions={onSyncBankTransactions}
+                    onSyncPlaidAccount={onSyncPlaidAccount}
+                    onRefreshPlaidBalance={onRefreshPlaidBalance}
+                    onAutoMatchBankTransactions={onAutoMatchBankTransactions}
+                    onMatchBankTransactionExpense={onMatchBankTransactionExpense}
+                    onMatchBankTransactionPayment={onMatchBankTransactionPayment}
+                    onReconcileBankTransaction={onReconcileBankTransaction}
+                    onReconcileMatchedBankTransactions={onReconcileMatchedBankTransactions}
+                  />
+                ) : null}
+                {financeSection === "payroll" ? (
+                  <FinancePayrollPanel
+                    workspaceDefaultCurrency={workspaceDefaultCurrency}
+                    payrollRecords={financePayrollRecords}
+                    canManage={canManageFinanceMembers}
+                    onCreatePayrollRecord={onCreatePayrollRecord}
+                    onApprovePayrollRecord={onApprovePayrollRecord}
+                    onPayPayrollRecord={onPayPayrollRecord}
+                    onCancelPayrollRecord={onCancelPayrollRecord}
+                  />
+                ) : null}
+                {financeSection === "accounting" && financeAccountingEnabled ? (
+                  <>
+                    <Suspense
+                      fallback={
+                        <div className="mb-6 rounded-[24px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                          Loading accounting workspace...
+                        </div>
+                      }
+                    >
+                      <FinanceAccountingAnalytics
+                        section="top"
+                        reportingWindow={reportingWindow}
+                        accountingExporting={accountingExporting}
+                        onExportAccountingStatementVariant={handleExportAccountingStatementVariant}
+                        onExportAccountingJournals={handleExportAccountingJournals}
+                        onPrintFinanceReport={handlePrintFinanceReport}
+                        activeWorkspace={activeWorkspace}
+                        financeSummary={financeSummary}
+                        canManageFinanceControls={canManageFinanceControls}
+                        selectedLockPeriodKey={selectedLockPeriodKey}
+                        onSelectLockPeriodKey={setSelectedLockPeriodKey}
+                        onLockFinancePeriod={handleLockFinancePeriod}
+                        onUnlockFinancePeriod={handleUnlockFinancePeriod}
+                        financeControlAction={financeControlAction}
+                      />
+                    </Suspense>
+                    <Suspense
+                      fallback={
+                        <div className="mt-6 rounded-[24px] border border-white/8 bg-white/5 px-4 py-4 text-sm text-slate-400">
+                          Loading accounting workspace...
+                        </div>
+                      }
+                    >
+                      <FinanceAccountingAnalytics
+                        section="bottom"
+                        financeSummary={financeSummary}
+                        reportingWindow={reportingWindow}
+                        onSelectAccount={setSelectedAccountingAccountCode}
+                        selectedAccountCode={selectedAccountingAccountCode}
+                        accountDrilldown={accountDrilldown}
+                        accountDrilldownLoading={accountDrilldownLoading}
+                      />
+                    </Suspense>
+                  </>
+                ) : null}
+                {financeSection === "accountant" && financePermissions?.isAccountant ? (
+                  <FinanceAccountantPortalPanel
+                    accountantSummary={financeAccountantSummary}
+                    canExport={financeAccountingEnabled}
+                  />
+                ) : null}
+              </div>
+            ) : (
+              <div className="workspace-warehouse-shell">
+                <WarehouseAnalyticsPanel
+                  summary={warehouseSummary}
+                  products={warehouseProducts}
+                  orders={warehouseOrders}
+                  alerts={warehouseAlerts}
+                  purchaseOrders={warehousePurchaseOrders}
+                  inventoryValueReport={warehouseInventoryValueReport}
+                  financeVendors={financeVendors}
+                  metrics={metricCards.filter((metric) => metric.id.startsWith("warehouse-") || metric.id.startsWith("ops-"))}
+                  onSelectMetric={onSelectMetric}
+                  bridgePanel={operationsBridgePanel}
+                  canManageStock={canManageWarehouseStock}
+                  onAdjustStock={handlers.onAdjustWarehouseStock}
+                  onSaveProduct={onCreateWarehouseProductEntry}
+                  onLoadProductMovementReview={onLoadWarehouseProductMovementReview}
+                  canManageShipments={canManageWarehouseStock}
+                  onUpdateShipmentStatus={handlers.onUpdateWarehouseOrderStatus}
+                  onLoadShipmentReview={onLoadWarehouseOrderReview}
+                  onSavePurchaseOrder={onSavePurchaseOrder}
+                  onSendPurchaseOrder={onSendPurchaseOrder}
+                  onReceivePurchaseOrder={onReceivePurchaseOrder}
+                  onCancelPurchaseOrder={onCancelPurchaseOrder}
+                  workspaceDefaultCurrency={workspaceDefaultCurrency}
+                  onOpenFinanceExpense={(expense) => {
+                    if (!expense?.id) {
+                      return;
+                    }
+                    onNavigateOverview?.({ scope: "finance", tab: "Media", metricId: "finance-expenses" });
+                  }}
+                />
+              </div>
+            )
+          ) : null}
+
+          {activeTab === "Links" && !showWorkspaceMembersView && !showWorkspaceOverviewView ? (
+            financeMode ? (
+              <div className="flex-1 overflow-y-auto px-6 py-6">
+                <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Approvals queue</h3>
+                    <p className="mt-1 text-sm text-slate-400">
+                      Review what needs a decision, payment, or reconciliation right now.
+                    </p>
+                  </div>
+                  <div
+                    className="rounded-[18px] px-4 py-3"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)"
+                    }}
+                  >
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Open items</div>
+                    <div
+                      style={{
+                        marginTop: 6,
+                        fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+                        fontSize: 28,
+                        fontWeight: 800,
+                        lineHeight: 1,
+                        color: "#f8fafc"
+                      }}
+                    >
+                      {financeApprovalCount}
+                    </div>
+                  </div>
+                </div>
+
+                {financeQueueSummary ? (
+                  <div className="mb-6">
+                    <FinanceQueueSummary summary={financeQueueSummary} compact />
+                  </div>
+                ) : null}
+
+                {financeApprovalSections.length ? (
+                  <div className="space-y-6">
+                    {financeApprovalSections.map((section) => (
+                      <section
+                        key={section.id}
+                        className="rounded-[24px] p-5"
+                        style={{
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+                          boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+                        }}
+                      >
+                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <div
+                              className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+                              style={{ color: section.accent }}
+                            >
+                              {section.title}
+                            </div>
+                            <p className="mt-1 text-sm text-slate-400">{section.description}</p>
+                          </div>
+                          <div
+                            className="rounded-full px-3 py-1 text-xs font-bold"
+                            style={{
+                              border: `1px solid ${section.accent}44`,
+                              background: `${section.accent}18`,
+                              color: section.accent
+                            }}
+                          >
+                            {section.items.length} item{section.items.length === 1 ? "" : "s"}
+                          </div>
+                        </div>
+
+                        <div className="space-y-5">
+                          {section.items.map((message) => (
+                            <MessageBubble
+                              key={`${section.id}-${message.id}`}
+                              message={message}
+                              currentUser={currentUser}
+                              currentThread={activeThread}
+                              role={role}
+                              financeMode={financeMode}
+                              reactions={reactions}
+                              activePicker={activePicker}
+                              setActivePicker={setActivePicker}
+                              onReact={onReact}
+                              resolveReactionUserName={resolveReactionUserName}
+                              showFinanceAccounting={financeAccountingEnabled}
+                              onApproveInvoice={handlers.onApproveInvoice}
+                              onEditInvoice={handleEditInvoice}
+                              onStartRejectInvoice={handlers.onStartRejectInvoice}
+                              onRejectReasonChange={handlers.onRejectReasonChange}
+                              onConfirmRejectInvoice={handlers.onConfirmRejectInvoice}
+                              onReorderStart={handlers.onReorderStart}
+                              onReorderChange={handlers.onReorderChange}
+                              onReorderConfirm={handlers.onReorderConfirm}
+                              onDismissStockAlert={handlers.onDismissStockAlert}
+                              onMarkDelivered={handlers.onMarkDelivered}
+                              onUpdateShipmentStatus={handlers.onUpdateWarehouseOrderStatus}
+                              onExpenseNoteChange={handlers.onExpenseNoteChange}
+                              onLogExpense={handlers.onLogExpense}
+                              onApproveExpense={handlers.onApproveExpense}
+                              onStartRejectExpense={handlers.onStartRejectExpense}
+                              onRejectExpenseChange={handlers.onRejectExpenseChange}
+                              onConfirmRejectExpense={handlers.onConfirmRejectExpense}
+                              onStartReimburseExpense={handlers.onStartReimburseExpense}
+                              onReimburseExpenseChange={handlers.onReimburseExpenseChange}
+                              onConfirmReimburseExpense={handlers.onConfirmReimburseExpense}
+                              onEditExpense={handleEditExpense}
+                              financePermissions={financePermissions}
+                              onMarkPaidInvoice={handleMarkPaidInvoice}
+                              onDownloadInvoicePdf={handlers.onDownloadInvoicePdf}
+                              downloadingInvoicePdfId={handlers.downloadingInvoicePdfId}
+                              onIssueRecurringInvoice={handlers.onIssueRecurringInvoice}
+                              onReconcileInvoice={handlers.onReconcileInvoice}
+                              onReconcileExpense={handlers.onReconcileExpense}
+                              canManageFinanceMembers={canManageFinanceMembers}
+                            />
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="grid place-items-center rounded-[24px] px-6 py-16 text-center"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "linear-gradient(180deg,#111827 0%,#10192a 100%)"
+                    }}
+                  >
+                    <div>
+                      <p className="text-lg font-semibold text-slate-100">All caught up</p>
+                      <p className="mt-2 max-w-md text-sm text-slate-400">
+                        There are no pending finance approvals, payments, or reconciliation tasks right now.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={`grid flex-1 place-items-center px-6 py-6 text-center ${financeMode ? "text-slate-500" : "text-slate-500"}`}>
+                <div>
+                  <p className={`text-lg font-semibold ${financeMode ? "text-slate-100" : "text-slate-700"}`}>{displayTabLabel("Links", financeMode)}</p>
+                  <p className="mt-2 max-w-md text-sm">{financeMode ? "Approval queues, invoice links, and review shortcuts can surface here." : "Quick links to invoice PDFs, stock sheets, and shipment documents will show up here."}</p>
+                </div>
+              </div>
+            )
+          ) : null}
+
+          {activeTab === "Pinned" && !showWorkspaceMembersView && !showWorkspaceOverviewView ? (
+            <div className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className={`text-xl font-bold ${financeMode ? "text-white" : "text-slate-900"}`}>{financeMode ? "Pinned dashboard" : "Pinned dashboard"}</h3>
+                  <p className="text-sm text-slate-500">Live metrics tied to this business thread.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailMetric(null)}
+                  className="rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
+                  style={
+                    financeMode
+                      ? {
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          background: "rgba(255,255,255,0.05)",
+                          color: "#cbd5e1"
+                        }
+                      : undefined
+                  }
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {visiblePinnedMetrics.map((metric) => (
+                  <StatCard key={metric.id} metric={metric} onSelect={onSelectMetric} financeMode={financeMode} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+          </div>
+
+          <AnimatePresence>
+            {detailMetric ? (
+              <motion.aside
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 24 }}
+              className="absolute right-0 top-0 h-full w-[320px] p-5"
+              style={
+                financeMode
+                  ? {
+                      borderLeft: "1px solid rgba(255,255,255,0.08)",
+                      background: "linear-gradient(180deg,#0f1623,#111827)",
+                      boxShadow: "-20px 0 60px rgba(0,0,0,0.4)"
+                    }
+                  : undefined
+              }
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Metric detail</p>
+                  <h4 className={`mt-2 text-lg font-bold ${financeMode ? "text-white" : "text-slate-900"}`}>{detailMetric.label}</h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDetailMetric(null)}
+                  className="rounded-full px-3 py-1 text-sm font-semibold"
+                  style={
+                    financeMode
+                      ? {
+                          border: "1px solid rgba(255,255,255,0.08)",
+                          color: "#94a3b8"
+                        }
+                      : undefined
+                  }
+                >
+                  Close
+                </button>
+              </div>
+              <div
+                className="mt-5 rounded-2xl p-4"
+                style={
+                  financeMode
+                    ? {
+                        background: "#111827",
+                        border: "1px solid rgba(255,255,255,0.08)"
+                      }
+                    : undefined
+                }
+              >
+                <p className={`text-3xl font-bold ${financeMode ? "text-slate-50" : "text-slate-900"}`}>{detailMetric.value}</p>
+                {detailMetric.subvalue ? <p className="mt-2 text-sm font-medium text-slate-500">{detailMetric.subvalue}</p> : null}
+              </div>
+              <p className={`mt-4 text-sm leading-6 ${financeMode ? "text-slate-400" : "text-slate-600"}`}>{metricDescription(detailMetric)}</p>
+              {financeMode ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Recent Finance Activity</p>
+                  <FinanceActivityFeed actions={financeActivity.slice(0, 4)} compact />
+                </div>
+              ) : null}
+              {detailMetric?.id === "ops-attention" ? (
+                <div className="mt-5">
+                  <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-400" : "text-slate-500"}`}>Cross-module coordination</p>
+                  <div className="space-y-3">
+                    {[
+                      financeSummary?.overdueInvoices
+                        ? {
+                            id: "ops-overdue",
+                            title: `${financeSummary.overdueInvoices} overdue invoice${financeSummary.overdueInvoices === 1 ? "" : "s"}`,
+                            detail: `${formatMoneyDisplay(financeSummary?.overdueAmount || 0)} needs follow-up`
+                          }
+                        : null,
+                      warehouseSummary?.reorderAttention
+                        ? {
+                            id: "ops-reorder",
+                            title: `${warehouseSummary.reorderAttention} product${warehouseSummary.reorderAttention === 1 ? "" : "s"} need reorder`,
+                            detail: `${warehouseSummary.lowStockItems || warehouseSummary.reorderAttention} low-stock signal${Number(warehouseSummary.lowStockItems || warehouseSummary.reorderAttention) === 1 ? "" : "s"} active`
+                          }
+                        : null,
+                      warehouseSummary?.delayedOrders
+                        ? {
+                            id: "ops-delayed",
+                            title: `${warehouseSummary.delayedOrders} delayed shipment${warehouseSummary.delayedOrders === 1 ? "" : "s"}`,
+                            detail: "Operational timing is slipping in the warehouse flow."
+                          }
+                        : null
+                    ].filter(Boolean).map((item) => (
+                      <div
+                        key={item.id}
+                        className="rounded-[16px] px-4 py-3"
+                        style={
+                          financeMode
+                            ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.05)" }
+                            : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                        }
+                      >
+                        <div className={`text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                        <div className="mt-1 text-xs text-slate-500">{item.detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5">
+                    <p className={`mb-3 text-xs font-semibold uppercase tracking-[0.18em] ${financeMode ? "text-slate-400" : "text-slate-500"}`}>Recent shared flow</p>
+                    <div className="space-y-3">
+                      {[
+                        ...(reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                          ? financeSummary.recentPayments
+                          : recentPaymentActivity
+                        ).slice(0, 2).map((payment) => ({
+                          id: `ops-payment-${payment.id}`,
+                          title: `${payment.invoiceNumber} payment`,
+                          detail: `${payment.customerName} · ${formatMoney(payment.amount, payment.currency)}`,
+                          meta: formatDateTime(payment.recordedAt)
+                        })),
+                        ...recentShipmentEvents.slice(0, 2).map((shipment) => ({
+                          id: `ops-shipment-${shipment.id}`,
+                          title: `${shipment.orderNumber} ${warehouseStatusLabel(shipment.status).toLowerCase()}`,
+                          detail: `${shipment.destination} · ${warehouseShipmentTypeLabel(shipment.shipmentType)}`,
+                          meta: formatDateTime(shipment.updatedAt || shipment.createdAt || shipment.estimatedDelivery)
+                        }))
+                      ].slice(0, 4).map((item) => (
+                        <div
+                          key={item.id}
+                          className="rounded-[16px] px-4 py-3"
+                          style={
+                            financeMode
+                              ? { border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.05)" }
+                              : { border: "1px solid #e2e8f0", background: "#f8fafc" }
+                          }
+                        >
+                          <div className={`text-sm font-semibold ${financeMode ? "text-slate-100" : "text-slate-900"}`}>{item.title}</div>
+                          <div className="mt-1 text-xs text-slate-500">{item.detail}</div>
+                          <div className="mt-2 text-xs text-slate-500">{item.meta}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {financeMode && detailMetric?.id === "finance-outstanding" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Top open balances</p>
+                  <div className="space-y-3">
+                    {(financeSummary?.topCustomersOwed?.length ? financeSummary.topCustomersOwed : customerBalanceRows).slice(0, 4).map((item) => (
+                      <div key={item.name} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-100">{item.name}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                          <span>{item.invoiceCount} invoice{item.invoiceCount === 1 ? "" : "s"}</span>
+                          <span className="text-amber-200">{formatMoneyDisplay((item.outstandingAmountByCurrency ?? item.outstandingAmount) || 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {paymentContextInvoices.length ? (
+                    <div className="mt-5">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Latest payment context on open invoices</p>
+                      <div className="space-y-3">
+                        {paymentContextInvoices.map((item) => (
+                          <div key={item.id} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-100">{item.invoiceNumber}</div>
+                                <div className="mt-1 text-xs text-slate-400">{item.customerName}</div>
+                              </div>
+                              <div className="text-xs text-amber-200">{formatMoney(item.outstandingAmount || 0, item.currency)} open</div>
+                            </div>
+                            {item.latestPayment ? (
+                              <div className="mt-3 rounded-[14px] border border-white/8 bg-white/5 px-3 py-3 text-xs text-slate-300">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div>{formatPaymentMethod(item.latestPayment.method)}{item.latestPayment.reference ? ` · Ref ${item.latestPayment.reference}` : ""}</div>
+                                    <div className="mt-1 text-slate-500">{formatDateTime(item.latestPayment.recordedAt)}</div>
+                                    {item.latestPayment.note ? <div className="mt-2 text-slate-500">{item.latestPayment.note}</div> : null}
+                                  </div>
+                                  <div className="text-right">
+                                    <div>{formatMoney(item.latestPayment.amount || 0, item.currency)}</div>
+                                    <div className="mt-1 text-slate-500">{item.latestPayment.recordedBy?.name || "Finance staff"}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {financeMode && detailMetric?.id === "finance-paid" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Recent payment history</p>
+                  <div className="space-y-3">
+                    {(reportingWindow === "all" && Array.isArray(financeSummary?.recentPayments) && financeSummary.recentPayments.length
+                      ? financeSummary.recentPayments
+                      : recentPaymentActivity
+                    ).slice(0, 4).map((payment) => (
+                      <div key={payment.id} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-100">{payment.invoiceNumber}</div>
+                        <div className="mt-1 text-xs text-slate-400">{payment.customerName}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+                          <span>{formatDateTime(payment.recordedAt)}</span>
+                          <span className="text-emerald-300">{formatMoney(payment.amount, payment.currency)}</span>
+                        </div>
+                        <div className="mt-2 text-xs text-slate-500">
+                          {formatPaymentMethod(payment.method)}
+                          {payment.reference ? ` · Ref ${payment.reference}` : ""}
+                        </div>
+                        {payment.note ? <div className="mt-2 text-xs text-slate-500">{payment.note}</div> : null}
+                        {payment.recordedBy?.name ? <div className="mt-1 text-xs text-slate-500">Recorded by {payment.recordedBy.name}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {financeMode && detailMetric?.id === "finance-overdue" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Overdue invoices</p>
+                  <div className="space-y-3">
+                    {overdueInvoiceMessages.slice(0, 4).map((invoice) => (
+                      <div key={invoice.metadata.invoiceId} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-100">{invoice.metadata.invoiceNumber}</div>
+                        <div className="mt-1 text-xs text-slate-400">{invoice.metadata.companyName}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                          <span>Due {formatDate(invoice.metadata.dueDate)}</span>
+                          <span className="text-rose-300">{formatMoney(invoice.metadata.outstandingAmount || 0, invoice.metadata.currency)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {recurringTemplateHistory.some((template) => template.dueNow) ? (
+                    <div className="mt-5">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Recurring templates due to issue</p>
+                      <div className="space-y-3">
+                        {recurringTemplateHistory.filter((template) => template.dueNow).slice(0, 4).map((template) => (
+                          <div key={template.id} className="rounded-[16px] border border-amber-400/20 bg-amber-500/5 px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-100">{template.invoiceNumber}</div>
+                                <div className="mt-1 text-xs text-slate-400">{template.customerName}</div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                  Next issue {template.nextIssueDate ? formatDate(template.nextIssueDate) : "not scheduled"}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-amber-200">Due now</div>
+                                <div className="mt-1 text-xs text-slate-500">{template.generatedCount} generated</div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {financeMode && detailMetric?.id === "finance-expenses" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Most used vendors</p>
+                  <div className="space-y-3">
+                    {(financeSummary?.topVendors?.length ? financeSummary.topVendors : vendorUsageRows).slice(0, 4).map((vendor) => (
+                      <div key={vendor.name} className="rounded-[16px] border border-white/8 bg-white/5 px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-100">{vendor.name}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-400">
+                          <span>{vendor.expenseCount} expense{vendor.expenseCount === 1 ? "" : "s"}</span>
+                          <span className="text-sky-300">{formatMoneyDisplay((vendor.totalAmountByCurrency ?? vendor.totalAmount) || 0)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {!financeMode && detailMetric?.id === "warehouse-skus" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Catalog status</p>
+                  <div className="space-y-3">
+                    {[
+                      ["Active", warehouseSummary?.productStatusBreakdown?.active ?? warehouseProducts.filter((product) => product.productStatus !== "paused" && product.productStatus !== "discontinued").length],
+                      ["Paused", warehouseSummary?.productStatusBreakdown?.paused ?? warehouseProducts.filter((product) => product.productStatus === "paused").length],
+                      ["Discontinued", warehouseSummary?.productStatusBreakdown?.discontinued ?? warehouseProducts.filter((product) => product.productStatus === "discontinued").length]
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-slate-900">{label}</span>
+                          <span className="text-slate-500">{value}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent stock movement</p>
+                    <div className="space-y-3">
+                      {(warehouseSummary?.recentStockMovements || []).slice(0, 4).map((movement) => {
+                        const positiveChange = Number(movement.quantityDelta || 0) > 0;
+                        return (
+                          <div key={movement.id} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="text-sm font-semibold text-slate-900">{movement.productName}</div>
+                                <div className="mt-1 text-xs text-slate-500">{movement.movementLabel || warehouseMovementTypeLabel(movement.movementType)}</div>
+                                <div className="mt-2 text-xs text-slate-500">
+                                  {formatWarehouseQuantity(movement.previousStock)} {movement.unit} → {formatWarehouseQuantity(movement.resultingStock)} {movement.unit}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className={`text-xs font-semibold ${positiveChange ? "text-emerald-600" : "text-rose-600"}`}>
+                                  {formatWarehouseQuantityDelta(movement.quantityDelta, movement.unit)}
+                                </div>
+                                <div className="mt-1 text-xs text-slate-500">{formatDateTime(movement.createdAt)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {!warehouseSummary?.recentStockMovements?.length ? (
+                        <div className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                          No stock movement is recorded yet.
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {!financeMode && detailMetric?.id === "warehouse-low-stock" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Reorder attention</p>
+                  <div className="space-y-3">
+                    {(warehouseSummary?.lowStockProducts?.length
+                      ? warehouseSummary.lowStockProducts
+                      : warehouseProducts
+                          .filter(isWarehouseLowStock)
+                          .map((product) => ({
+                            id: product.id,
+                            name: product.name,
+                            sku: product.sku,
+                            stockGap: Number(product.stockGap || Math.max(0, getWarehouseReorderThreshold(product) - Number(product.currentStock || 0))),
+                            reorderQuantity: Number(product.reorderQuantity || 0),
+                            unit: product.unit || "units"
+                          }))
+                    ).slice(0, 4).map((product) => (
+                      <div key={product.id} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+                        <div className="text-sm font-semibold text-slate-900">{product.name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{product.sku}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+                          <span>Gap {product.stockGap}</span>
+                          <span>Reorder {product.reorderQuantity} {product.unit}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {!financeMode && detailMetric?.id === "warehouse-in-transit" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Shipment movement</p>
+                  <div className="space-y-3">
+                    {(warehouseSummary?.recentShipmentActivity?.length
+                      ? warehouseSummary.recentShipmentActivity
+                      : warehouseOrders
+                    ).filter((order) => ["pending", "packed", "dispatched", "in_transit", "delayed"].includes(order.status))
+                      .slice(0, 4)
+                      .map((order) => (
+                        <div key={order.id} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{order.orderNumber}</div>
+                              <div className="mt-1 text-xs text-slate-500">{order.destination}</div>
+                              {order.lastStatusUpdate ? (
+                                <div className="mt-2 text-xs text-slate-500">
+                                  Last update {formatDateTime(order.lastStatusUpdate.changedAt)}
+                                  {order.lastStatusUpdate.actor?.name ? ` · ${order.lastStatusUpdate.actor.name}` : ""}
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs font-semibold text-[#2D8EFF]">{warehouseStatusLabel(order.status)}</div>
+                              <div className="mt-1 text-xs text-slate-500">{warehouseShipmentTypeLabel(order.shipmentType)}</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+              {!financeMode && detailMetric?.id === "warehouse-delivered" ? (
+                <div className="mt-5">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Recent completed handoffs</p>
+                  <div className="space-y-3">
+                    {(warehouseSummary?.recentShipmentActivity?.length
+                      ? warehouseSummary.recentShipmentActivity
+                      : warehouseOrders
+                    ).filter((order) => order.status === "delivered" || order.status === "delayed" || order.status === "cancelled")
+                      .slice(0, 4)
+                      .map((order) => (
+                        <div key={order.id} className="rounded-[16px] border border-slate-200 bg-slate-50 px-4 py-3">
+                          <div className="text-sm font-semibold text-slate-900">{order.orderNumber}</div>
+                          <div className="mt-1 text-xs text-slate-500">{order.destination}</div>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-slate-500">
+                            <span>{warehouseStatusLabel(order.status)}</span>
+                            <span>{formatDate(order.estimatedDelivery)}</span>
+                          </div>
+                          {order.lastStatusUpdate ? (
+                            <div className="mt-2 text-xs text-slate-500">
+                              Last update {formatDateTime(order.lastStatusUpdate.changedAt)}
+                              {order.lastStatusUpdate.actor?.name ? ` · ${order.lastStatusUpdate.actor.name}` : ""}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+              </motion.aside>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {showRealWorkspaceConfirm ? (
+              <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-20 flex items-center justify-center p-6"
+              style={{ background: "rgba(2,6,23,0.62)", backdropFilter: "blur(6px)" }}
+            >
+              <motion.div
+                initial={{ opacity: 0, y: 18, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 12, scale: 0.98 }}
+                transition={{ duration: 0.2 }}
+                style={{
+                  width: "min(440px, 100%)",
+                  borderRadius: 24,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "linear-gradient(180deg,#111827 0%,#0f1623 100%)",
+                  boxShadow: "0 24px 60px rgba(0,0,0,0.4)",
+                  padding: 24
+                }}
+              >
+                <div style={{ fontSize: 11, letterSpacing: "0.18em", textTransform: "uppercase", color: "#10b981", fontWeight: 700 }}>
+                  Leave Demo
+                </div>
+                <h3
+                  style={{
+                    margin: "10px 0 0",
+                    fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+                    fontSize: 24,
+                    lineHeight: 1.2,
+                    fontWeight: 700,
+                    color: "#f8fafc"
+                  }}
+                >
+                  Use the real workspace from now on?
+                </h3>
+                <p style={{ margin: "12px 0 0", color: "#94a3b8", lineHeight: 1.7 }}>
+                  Demo mode will stop opening automatically on this device. Future Finance and Warehouse access will go to the real workspace or its sign-in screen.
+                </p>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 22 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowRealWorkspaceConfirm(false)}
+                    style={{
+                      height: 42,
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#cbd5e1",
+                      fontWeight: 700,
+                      padding: "0 16px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmRealWorkspaceUpgrade}
+                    style={{
+                      height: 42,
+                      borderRadius: 12,
+                      border: "1px solid rgba(16,185,129,0.36)",
+                      background: "linear-gradient(135deg,#10b981,#059669)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      padding: "0 16px",
+                      cursor: "pointer"
+                    }}
+                  >
+                    Continue
+                  </button>
+                </div>
+              </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {financeEntryModal ? (
+              <FinanceEntryModal
+                type={financeEntryModal}
+                values={financeEntryValues}
+                onChange={updateFinanceEntryValue}
+                onFileChange={handleFinanceEntryFile}
+                customerSuggestions={customerSuggestions}
+                vendorSuggestions={vendorSuggestions}
+                categorySuggestions={categorySuggestions}
+                onClose={closeFinanceEntryModal}
+                onSubmit={handleFinanceEntrySubmit}
+                submitting={isFinanceEntrySubmitting}
+                workspaceDefaultCurrency={workspaceDefaultCurrency}
+              />
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {paymentEntry ? (
+              <InvoicePaymentModal
+                invoice={paymentEntry}
+                values={paymentEntryValues}
+                onChange={(field, value) => setPaymentEntryValues((current) => ({ ...current, [field]: value }))}
+                onClose={closePaymentEntry}
+                onSubmit={async () => {
+                  setIsPaymentSubmitting(true);
+                  try {
+                    await handleMarkPaidInvoice(paymentEntry.message, paymentEntryValues);
+                  } finally {
+                    setIsPaymentSubmitting(false);
+                  }
+                }}
+                submitting={isPaymentSubmitting}
+              />
+            ) : null}
+          </AnimatePresence>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ----- workspace/hooks/useWorkspaceFinanceData.js -----
+function useWorkspaceFinanceData({
+  authToken,
+  activeWorkspaceId,
+  realFinanceEnabled,
+  financePermissions,
+  workspaceDefaultCurrency,
+  workspaceState,
+  activeThread,
+  pushToast,
+  setWorkspaceState,
+  loadRealFinanceState,
+  loadRealFinanceActivity,
+  updateMessage,
+  decrementThreadUnread,
+  appendBotAlert,
+  setDraft,
+  setDownloadingInvoicePdfId
+}) {
+  const handleSaveFinanceCustomer = useCallback(async (payload) => {
+    if (!authToken || !activeWorkspaceId || !realFinanceEnabled) {
+      return false;
+    }
+
+    try {
+      if (payload.id) {
+        await api.updateFinanceCustomer(authToken, payload.id, payload, activeWorkspaceId);
+      } else {
+        await api.createFinanceCustomer(authToken, payload, activeWorkspaceId);
+      }
+
+      await loadRealFinanceState(authToken, {}, activeWorkspaceId);
+      pushToast({
+        title: payload.id ? "Customer updated" : "Customer added",
+        body: `${payload.name} is ready to reuse in Finance.`
+      });
+      return true;
+    } catch (error) {
+      pushToast({
+        title: "Unable to save customer",
+        body: error.message || "Please try again."
+      });
+      return false;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, realFinanceEnabled]);
+
+  const handleSaveFinanceVendor = useCallback(async (payload) => {
+    if (!authToken || !activeWorkspaceId || !realFinanceEnabled) {
+      return false;
+    }
+
+    try {
+      if (payload.id) {
+        await api.updateFinanceVendor(authToken, payload.id, payload, activeWorkspaceId);
+      } else {
+        await api.createFinanceVendor(authToken, payload, activeWorkspaceId);
+      }
+
+      await loadRealFinanceState(authToken, {}, activeWorkspaceId);
+      pushToast({
+        title: payload.id ? "Vendor updated" : "Vendor added",
+        body: `${payload.name} is ready to reuse in Finance.`
+      });
+      return true;
+    } catch (error) {
+      pushToast({
+        title: "Unable to save vendor",
+        body: error.message || "Please try again."
+      });
+      return false;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, realFinanceEnabled]);
+
+  async function handleApproveInvoice(message) {
+    if (!financePermissions.canApprove) {
+      pushToast({
+        title: "Approval unavailable",
+        body: "Your finance role does not allow approving invoices."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.invoiceId) {
+      try {
+        const invoice = await api.approveFinanceInvoice(authToken, message.metadata.invoiceId, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceInvoice: invoice }))
+        );
+        pushToast({
+          title: "Invoice approved",
+          body: `${invoice.invoiceNumber} was approved.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to approve invoice",
+          body: financeGuardrailMessage(error, "The invoice could not be approved.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "approved"
+      }
+    }));
+    decrementThreadUnread("financebot");
+    appendBotAlert("financebot", "FinanceBot", `Invoice #${message.metadata.invoiceNumber} approved.`, {
+      type: "system",
+      content: `Invoice #${message.metadata.invoiceNumber} approved by ${workspaceState.currentUser.name} at ${formatTime(new Date().toISOString())}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      invoices: current.invoices.map((invoice) =>
+        invoice.id === message.metadata.invoiceId ? { ...invoice, status: "approved" } : invoice
+      )
+    }));
+  }
+
+  function handleStartRejectInvoice(message) {
+    if (!financePermissions.canApprove) {
+      pushToast({
+        title: "Approval unavailable",
+        body: "Your finance role does not allow rejecting invoices."
+      });
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        showRejectInput: true
+      }
+    }));
+  }
+
+  function handleRejectReasonChange(message, value) {
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        rejectReason: value
+      }
+    }));
+  }
+
+  async function handleConfirmRejectInvoice(message) {
+    if (!financePermissions.canApprove) {
+      pushToast({
+        title: "Approval unavailable",
+        body: "Your finance role does not allow rejecting invoices."
+      });
+      return;
+    }
+
+    const rejectionReason = message.metadata.rejectReason || "Reason not provided";
+
+    if (realFinanceEnabled && message.metadata.invoiceId) {
+      try {
+        const invoice = await api.rejectFinanceInvoice(authToken, message.metadata.invoiceId, rejectionReason, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceInvoice: invoice }))
+        );
+        pushToast({
+          title: "Invoice rejected",
+          body: `${invoice.invoiceNumber} was rejected.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to reject invoice",
+          body: financeGuardrailMessage(error, "The invoice could not be rejected.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        showRejectInput: false,
+        status: "rejected",
+        rejectionReason
+      }
+    }));
+    decrementThreadUnread("financebot");
+    appendBotAlert("financebot", "FinanceBot", `Invoice #${message.metadata.invoiceNumber} rejected.`, {
+      type: "system",
+      content: `Invoice #${message.metadata.invoiceNumber} rejected by ${workspaceState.currentUser.name}. Reason: ${rejectionReason}`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      invoices: current.invoices.map((invoice) =>
+        invoice.id === message.metadata.invoiceId
+          ? { ...invoice, status: "rejected", rejectionReason }
+          : invoice
+      )
+    }));
+  }
+
+  async function handleMarkInvoicePaid(message, paymentDetails = null) {
+    if (!financePermissions.canMarkPaid) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow marking invoices as paid."
+      });
+      return false;
+    }
+
+    if (paymentDetails === null) {
+      return false;
+    }
+
+    const parsedPaidAmount = Number.parseFloat(paymentDetails?.amount);
+    if (!Number.isFinite(parsedPaidAmount) || parsedPaidAmount <= 0) {
+      pushToast({
+        title: "Payment amount required",
+        body: "Enter a payment amount greater than zero."
+      });
+      return false;
+    }
+
+    if (realFinanceEnabled && message.metadata.invoiceId) {
+      try {
+        const invoice = await api.markFinanceInvoicePaid(
+          authToken,
+          message.metadata.invoiceId,
+          {
+            paidAmount: parsedPaidAmount,
+            method: paymentDetails?.method || "bank_transfer",
+            reference: paymentDetails?.reference || "",
+            note: paymentDetails?.note || ""
+          },
+          activeWorkspaceId
+        );
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceInvoice: invoice }))
+        );
+        pushToast({
+          title: invoice.status === "paid" ? "Invoice marked paid" : "Partial payment recorded",
+          body: invoice.status === "paid"
+            ? `${invoice.invoiceNumber} was marked as paid.`
+            : `${formatMoney(invoice.outstandingAmount || 0, invoice.currency)} is still outstanding.`
+        });
+        void loadRealFinanceActivity();
+        return true;
+      } catch (error) {
+        pushToast({
+          title: "Unable to mark invoice paid",
+          body: financeGuardrailMessage(error, "The payment could not be recorded.")
+        });
+        return false;
+      }
+      return false;
+    }
+
+    const remainingBeforePayment = Number(message.metadata.outstandingAmount || message.metadata.amount || 0);
+    const nextOutstandingAmount = Math.max(0, remainingBeforePayment - parsedPaidAmount);
+    const paymentEntry = {
+      id: uid("payment"),
+      amount: parsedPaidAmount,
+      recordedAt: new Date().toISOString(),
+      remainingBalance: nextOutstandingAmount,
+      method: paymentDetails?.method || "bank_transfer",
+      reference: paymentDetails?.reference || "",
+      note: paymentDetails?.note || "",
+      recordedBy: {
+        id: workspaceState.currentUser.id,
+        name: workspaceState.currentUser.name,
+        email: workspaceState.currentUser.email || ""
+      }
+    };
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: parsedPaidAmount >= Number(currentMessage.metadata.outstandingAmount || currentMessage.metadata.amount || 0) ? "paid" : "partial",
+        paidByName: workspaceState.currentUser.name,
+        paidAmount: Number(currentMessage.metadata.paidAmount || 0) + parsedPaidAmount,
+        outstandingAmount: Math.max(0, Number(currentMessage.metadata.outstandingAmount || currentMessage.metadata.amount || 0) - parsedPaidAmount),
+        payments: [...(currentMessage.metadata.payments || []), paymentEntry]
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Invoice #${message.metadata.invoiceNumber} payment recorded.`, {
+      type: "system",
+      content: `Payment of ${formatMoney(parsedPaidAmount, message.metadata.currency)} recorded for #${message.metadata.invoiceNumber}${paymentEntry.reference ? ` (${paymentEntry.reference})` : ""}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      invoices: current.invoices.map((invoice) =>
+        invoice.id === message.metadata.invoiceId
+          ? {
+              ...invoice,
+              status: parsedPaidAmount >= Number(invoice.outstandingAmount ?? invoice.amount) ? "paid" : "partial",
+              paidByName: workspaceState.currentUser.name,
+              paidAmount: Number(invoice.paidAmount || 0) + parsedPaidAmount,
+              outstandingAmount: Math.max(0, Number(invoice.outstandingAmount ?? invoice.amount) - parsedPaidAmount),
+              payments: [...(invoice.payments || []), paymentEntry]
+            }
+          : invoice
+      )
+    }));
+    return true;
+  }
+
+  async function handleIssueRecurringInvoice(message) {
+    if (!financePermissions.canEdit) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow issuing recurring invoices."
+      });
+      return;
+    }
+
+    if (!realFinanceEnabled || !message.metadata.invoiceId) {
+      pushToast({
+        title: "Real finance required",
+        body: "Recurring invoice execution is available in the real finance workspace."
+      });
+      return;
+    }
+
+    try {
+      const result = await api.issueNextFinanceInvoice(authToken, message.metadata.invoiceId, activeWorkspaceId);
+      await loadRealFinanceState(authToken, {}, activeWorkspaceId);
+      pushToast({
+        title: "Recurring invoice issued",
+        body: `${result.createdInvoice?.invoiceNumber || "The next invoice"} is now in the finance queue.`
+      });
+      void loadRealFinanceActivity();
+    } catch (error) {
+      pushToast({
+        title: "Unable to issue recurring invoice",
+        body: financeGuardrailMessage(error, "The recurring invoice could not be issued.")
+      });
+    }
+  }
+
+  async function handleReconcileInvoice(message) {
+    if (!financePermissions.canReconcile) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow reconciling invoices."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.invoiceId) {
+      try {
+        const invoice = await api.reconcileFinanceInvoice(authToken, message.metadata.invoiceId, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceInvoice: invoice }))
+        );
+        pushToast({
+          title: "Invoice reconciled",
+          body: `${invoice.invoiceNumber} was reconciled.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to reconcile invoice",
+          body: financeGuardrailMessage(error, "The invoice could not be reconciled.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "reconciled",
+        reconciledByName: workspaceState.currentUser.name
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Invoice #${message.metadata.invoiceNumber} reconciled.`, {
+      type: "system",
+      content: `Invoice #${message.metadata.invoiceNumber} reconciled by ${workspaceState.currentUser.name}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      invoices: current.invoices.map((invoice) =>
+        invoice.id === message.metadata.invoiceId
+          ? { ...invoice, status: "reconciled", reconciledByName: workspaceState.currentUser.name }
+          : invoice
+      )
+    }));
+  }
+
+  function handleExpenseNoteChange(message, value) {
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        note: value
+      }
+    }));
+  }
+
+  async function handleLogExpense(message) {
+    if (!financePermissions.canEdit) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow updating expenses."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.expenseId) {
+      try {
+        const expense = await api.updateFinanceExpense(authToken, message.metadata.expenseId, {
+          note: message.metadata.note || ""
+        }, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceExpense: expense }))
+        );
+        pushToast({
+          title: "Expense updated",
+          body: "The finance note was saved."
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to save expense note",
+          body: financeGuardrailMessage(error, "The expense note could not be saved.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        logged: true,
+        status: "pending_review"
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Expense ${formatMoney(message.metadata.amount, message.metadata.currency)} submitted for review.`, {
+      type: "system",
+      content: `Expense submitted for review under ${message.metadata.category}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      expenses: [
+        {
+          id: uid("expense"),
+          amount: message.metadata.amount,
+          currency: message.metadata.currency,
+          category: message.metadata.category,
+          vendorName: message.metadata.vendorName || "",
+          vendor: message.metadata.vendor || null,
+          note: message.metadata.note,
+          receipt: message.metadata.receipt || null,
+          status: "pending_review",
+          createdAt: new Date().toISOString().slice(0, 10)
+        },
+        ...current.expenses
+      ]
+    }));
+  }
+
+  async function handleApproveExpense(message) {
+    if (!canManageFinanceMembers) {
+      pushToast({
+        title: "Approval unavailable",
+        body: "Manager access is required to approve expenses."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.expenseId) {
+      try {
+        const expense = await api.approveExpense(authToken, message.metadata.expenseId, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceExpense: expense }))
+        );
+        pushToast({
+          title: "Expense approved",
+          body: `${formatMoney(expense.amount, expense.currency)} is ready for reimbursement or reconciliation.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to approve expense",
+          body: financeGuardrailMessage(error, "The expense could not be approved.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "approved",
+        approvedByName: workspaceState.currentUser.name,
+        showRejectInput: false,
+        rejectReason: "",
+        rejectionReason: ""
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Expense ${formatMoney(message.metadata.amount, message.metadata.currency)} approved.`, {
+      type: "system",
+      content: `Expense approved by ${workspaceState.currentUser.name}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      expenses: current.expenses.map((expense) =>
+        expense.id === message.metadata.expenseId
+          ? {
+              ...expense,
+              status: "approved",
+              approvedByName: workspaceState.currentUser.name,
+              rejectionReason: ""
+            }
+          : expense
+      )
+    }));
+  }
+
+  function handleStartRejectExpense(message) {
+    if (!canManageFinanceMembers) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Manager access is required to reject expenses."
+      });
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        showRejectInput: true
+      }
+    }));
+  }
+
+  function handleRejectExpenseChange(message, value) {
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        rejectReason: value
+      }
+    }));
+  }
+
+  async function handleConfirmRejectExpense(message) {
+    if (!canManageFinanceMembers) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Manager access is required to reject expenses."
+      });
+      return;
+    }
+
+    const rejectionReason = String(message.metadata.rejectReason || "").trim();
+    if (!rejectionReason) {
+      pushToast({
+        title: "Reason required",
+        body: "Add a rejection reason before confirming."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.expenseId) {
+      try {
+        const expense = await api.rejectExpense(authToken, message.metadata.expenseId, rejectionReason, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceExpense: expense }))
+        );
+        pushToast({
+          title: "Expense rejected",
+          body: `${formatMoney(expense.amount, expense.currency)} was rejected.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to reject expense",
+          body: financeGuardrailMessage(error, "The expense could not be rejected.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "rejected",
+        showRejectInput: false,
+        rejectedByName: workspaceState.currentUser.name,
+        rejectionReason,
+        rejectReason: ""
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Expense ${formatMoney(message.metadata.amount, message.metadata.currency)} rejected.`, {
+      type: "system",
+      content: `Expense rejected by ${workspaceState.currentUser.name}. Reason: ${rejectionReason}`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      expenses: current.expenses.map((expense) =>
+        expense.id === message.metadata.expenseId
+          ? {
+              ...expense,
+              status: "rejected",
+              rejectedByName: workspaceState.currentUser.name,
+              rejectionReason
+            }
+          : expense
+      )
+    }));
+  }
+
+  function handleStartReimburseExpense(message) {
+    if (!financePermissions.canEdit) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow reimbursing expenses."
+      });
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        showReimburseInput: true
+      }
+    }));
+  }
+
+  function handleReimburseExpenseChange(message, field, value) {
+    const fieldMap = {
+      method: "reimbursementMethod",
+      reference: "reimbursementReference",
+      note: "reimbursementNote"
+    };
+    const metadataKey = fieldMap[field] || field;
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        [metadataKey]: value
+      }
+    }));
+  }
+
+  async function handleConfirmReimburseExpense(message) {
+    if (!financePermissions.canEdit) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow reimbursing expenses."
+      });
+      return;
+    }
+
+    const reimbursement = {
+      method: String(message.metadata.reimbursementMethod || "").trim(),
+      reference: String(message.metadata.reimbursementReference || "").trim(),
+      note: String(message.metadata.reimbursementNote || "").trim()
+    };
+
+    if (realFinanceEnabled && message.metadata.expenseId) {
+      try {
+        const expense = await api.reimburseExpense(authToken, message.metadata.expenseId, reimbursement, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceExpense: expense }))
+        );
+        pushToast({
+          title: "Expense reimbursed",
+          body: `${formatMoney(expense.amount, expense.currency)} was marked as reimbursed.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to reimburse expense",
+          body: financeGuardrailMessage(error, "The expense could not be reimbursed.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "reimbursed",
+        reimbursedByName: workspaceState.currentUser.name,
+        reimbursedAt: new Date().toISOString(),
+        reimbursement,
+        showReimburseInput: false,
+        reimbursementMethod: "",
+        reimbursementReference: "",
+        reimbursementNote: ""
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Expense ${formatMoney(message.metadata.amount, message.metadata.currency)} reimbursed.`, {
+      type: "system",
+      content: reimbursement.reference
+        ? `Expense reimbursed by ${workspaceState.currentUser.name} with ref ${reimbursement.reference}.`
+        : `Expense reimbursed by ${workspaceState.currentUser.name}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      expenses: current.expenses.map((expense) =>
+        expense.id === message.metadata.expenseId
+          ? {
+              ...expense,
+              status: "reimbursed",
+              reimbursedByName: workspaceState.currentUser.name,
+              reimbursedAt: new Date().toISOString(),
+              reimbursement
+            }
+          : expense
+      )
+    }));
+  }
+
+  async function handleReconcileExpense(message) {
+    if (!financePermissions.canReconcile) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow reconciling expenses."
+      });
+      return;
+    }
+
+    if (realFinanceEnabled && message.metadata.expenseId) {
+      try {
+        const expense = await api.reconcileFinanceExpense(authToken, message.metadata.expenseId, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, buildFinancePayloadFromState(current, { replaceExpense: expense }))
+        );
+        pushToast({
+          title: "Expense reconciled",
+          body: `${formatMoney(expense.amount, expense.currency)} was reconciled.`
+        });
+        void loadRealFinanceActivity();
+      } catch (error) {
+        pushToast({
+          title: "Unable to reconcile expense",
+          body: financeGuardrailMessage(error, "The expense could not be reconciled.")
+        });
+      }
+      return;
+    }
+
+    updateMessage("financebot", message.id, (currentMessage) => ({
+      ...currentMessage,
+      metadata: {
+        ...currentMessage.metadata,
+        status: "reconciled",
+        reconciledByName: workspaceState.currentUser.name
+      }
+    }));
+    appendBotAlert("financebot", "FinanceBot", `Expense ${formatMoney(message.metadata.amount, message.metadata.currency)} reconciled.`, {
+      type: "system",
+      content: `Expense reconciled by ${workspaceState.currentUser.name}.`
+    });
+    setWorkspaceState((current) => ({
+      ...current,
+      expenses: current.expenses.map((expense) =>
+        expense.id === message.metadata.expenseId
+          ? { ...expense, status: "reconciled", reconciledByName: workspaceState.currentUser.name }
+          : expense
+      )
+    }));
+  }
+
+  async function createInvoiceEntry({
+    invoiceId = null,
+    invoiceNumber,
+    customerName,
+    customerEmail,
+    amount,
+    currency = workspaceDefaultCurrency || "USD",
+    dueDate,
+    note = "",
+    recurringEnabled = false,
+    recurringFrequency = "monthly",
+    attachments = []
+  }) {
+    if (!financePermissions.canCreate) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow creating or editing invoices."
+      });
+      return false;
+    }
+
+    const normalizedInvoiceNumber = String(invoiceNumber || "").replace(/^#/, "").trim().toUpperCase();
+    const parsedAmount = Number.parseFloat(amount);
+    const resolvedCurrency = String(currency || "USD").trim().toUpperCase() || "USD";
+    const resolvedCustomerName = String(customerName || "").trim() || (activeThread?.isBot ? "Client account" : activeThread?.name || "Client account");
+    const resolvedCustomerEmail = String(customerEmail || "").trim().toLowerCase();
+    const resolvedDueDate = dueDate || new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10);
+    const resolvedNote = String(note || "").trim();
+    const recurring = {
+      enabled: Boolean(recurringEnabled),
+      frequency: recurringFrequency || "monthly",
+      interval: 1,
+      nextIssueDate: recurringEnabled ? resolvedDueDate : null
+    };
+
+    if (!normalizedInvoiceNumber) {
+      pushToast({
+        title: "Invoice number required",
+        body: "Add a unique invoice number before saving."
+      });
+      return false;
+    }
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      pushToast({
+        title: "Amount required",
+        body: "Enter a valid invoice amount greater than zero."
+      });
+      return false;
+    }
+
+    if (realFinanceEnabled) {
+      try {
+        const invoice = invoiceId
+          ? await api.updateFinanceInvoice(authToken, invoiceId, {
+              invoiceNumber: normalizedInvoiceNumber,
+              customerName: resolvedCustomerName,
+              customerEmail: resolvedCustomerEmail,
+              amount: parsedAmount,
+              currency: resolvedCurrency,
+              dueDate: resolvedDueDate,
+              note: resolvedNote,
+              recurring,
+              attachments
+            }, activeWorkspaceId)
+          : await api.createFinanceInvoice(authToken, {
+              invoiceNumber: normalizedInvoiceNumber,
+              customerName: resolvedCustomerName,
+              customerEmail: resolvedCustomerEmail,
+              amount: parsedAmount,
+              currency: resolvedCurrency,
+              dueDate: resolvedDueDate,
+              status: "pending_review",
+              note: resolvedNote,
+              recurring,
+              attachments
+            }, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, {
+            invoices: current.invoices
+              .filter((entry) => !invoiceId || entry.id !== invoiceId)
+              .map((entry) => ({
+                id: entry.id,
+                invoiceNumber: entry.invoiceNumber,
+                vendorName: entry.companyName,
+                customerName: entry.companyName,
+                customerEmail: entry.customer?.email || "",
+                customer: entry.customer || null,
+                amount: entry.amount,
+                currency: entry.currency,
+                dueDate: entry.dueDate,
+                status: entry.recordStatus || entry.status,
+                paidAmount: entry.paidAmount || 0,
+                paidAt: entry.paidAt || null,
+                outstandingAmount: entry.outstandingAmount ?? Math.max(0, Number(entry.amount || 0) - Number(entry.paidAmount || 0)),
+                note: entry.note || "",
+                rejectionReason: entry.rejectionReason || "",
+                attachments: entry.attachments || [],
+                recurring: entry.recurring || {
+                  enabled: false,
+                  frequency: "monthly",
+                  interval: 1,
+                  nextIssueDate: null
+                },
+                updatedAt: entry.updatedAt,
+                createdAt: entry.createdAt
+              }))
+              .concat(invoice),
+            expenses: current.expenses.map((entry) => ({
+              id: entry.id,
+              amount: entry.amount,
+              currency: entry.currency,
+              category: entry.category,
+              vendorName: entry.vendorName || "",
+              vendorEmail: entry.vendor?.email || "",
+              vendor: entry.vendor || null,
+              note: entry.note || "",
+              receipt: entry.receipt || null,
+              status: entry.status,
+              updatedAt: entry.updatedAt,
+              createdAt: entry.createdAt,
+              expenseDate: entry.expenseDate
+            }))
+          })
+        );
+        pushToast({
+          title: invoiceId ? "Invoice updated" : "Invoice created",
+          body: invoiceId
+            ? `${invoice.invoiceNumber} was updated successfully.`
+            : `${invoice.invoiceNumber} is now in the finance queue.`
+        });
+        void loadRealFinanceActivity();
+        setDraft("");
+        return true;
+      } catch (error) {
+        const errorMessage = error?.message || "Please try again.";
+        const duplicateInvoice = /already exists/i.test(errorMessage);
+        pushToast({
+          title: duplicateInvoice ? "Invoice already exists" : "Unable to create invoice",
+          body: duplicateInvoice
+            ? `${normalizedInvoiceNumber} is already in the finance queue. Try a different invoice number.`
+            : financeGuardrailMessage(error, "The invoice could not be saved.")
+        });
+        return false;
+      }
+    }
+
+    if (invoiceId) {
+      setWorkspaceState((current) => ({
+        ...current,
+        threads: current.threads.map((thread) =>
+          thread.id === "financebot"
+            ? {
+                ...thread,
+                messages: thread.messages.map((message) =>
+                  message.type === "invoice" && message.metadata.invoiceId === invoiceId
+                    ? {
+                        ...message,
+                        metadata: {
+                          ...message.metadata,
+                          invoiceNumber: normalizedInvoiceNumber,
+                          companyName: resolvedCustomerName,
+                          customer: {
+                            id: null,
+                            name: resolvedCustomerName,
+                            email: resolvedCustomerEmail
+                          },
+                          amount: parsedAmount,
+                          currency: resolvedCurrency,
+                          dueDate: resolvedDueDate,
+                          note: resolvedNote,
+                          recurring,
+                          attachments
+                        }
+                      }
+                    : message
+                ),
+                preview: messagePreview(
+                  thread.messages
+                    .map((message) =>
+                      message.type === "invoice" && message.metadata.invoiceId === invoiceId
+                        ? {
+                            ...message,
+                            metadata: {
+                              ...message.metadata,
+                              invoiceNumber: normalizedInvoiceNumber,
+                              companyName: resolvedCustomerName,
+                              customer: {
+                                id: null,
+                                name: resolvedCustomerName,
+                                email: resolvedCustomerEmail
+                              },
+                              amount: parsedAmount,
+                              currency: resolvedCurrency,
+                              dueDate: resolvedDueDate,
+                              note: resolvedNote,
+                              recurring,
+                              attachments
+                            }
+                          }
+                        : message
+                    )
+                    .slice(-1)[0]
+                )
+              }
+            : thread
+        ),
+        invoices: current.invoices.map((invoice) =>
+          invoice.id === invoiceId
+            ? {
+                ...invoice,
+                invoiceNumber: normalizedInvoiceNumber,
+                companyName: resolvedCustomerName,
+                customer: {
+                  id: null,
+                  name: resolvedCustomerName,
+                  email: resolvedCustomerEmail
+                },
+                amount: parsedAmount,
+                currency: resolvedCurrency,
+                dueDate: resolvedDueDate,
+                note: resolvedNote,
+                recurring,
+                attachments
+              }
+            : invoice
+        )
+      }));
+      pushToast({
+        title: "Invoice updated",
+        body: `${normalizedInvoiceNumber} was updated successfully.`
+      });
+      setDraft("");
+      return true;
+    }
+
+    appendBotAlert("financebot", "FinanceBot", `New invoice card created for ${normalizedInvoiceNumber}.`, {
+      type: "invoice",
+      content: `Invoice ${normalizedInvoiceNumber} created from command.`,
+        metadata: {
+          invoiceId: uid("invoice"),
+          invoiceNumber: normalizedInvoiceNumber,
+          companyName: resolvedCustomerName,
+          customer: {
+            id: null,
+            name: resolvedCustomerName,
+            email: resolvedCustomerEmail
+          },
+          amount: parsedAmount,
+          currency: resolvedCurrency,
+          dueDate: resolvedDueDate,
+          note: resolvedNote,
+          status: "pending",
+          recurring,
+          attachments
+        }
+      });
+    setDraft("");
+    return true;
+  }
+
+  async function createExpenseEntry({
+    expenseId = null,
+    amount,
+    currency = workspaceDefaultCurrency || "USD",
+    category,
+    expenseDate,
+    vendorName,
+    vendorEmail,
+    note,
+    receipt = null
+  }) {
+    if (!financePermissions.canCreate) {
+      pushToast({
+        title: "Action unavailable",
+        body: "Your finance role does not allow creating or editing expenses."
+      });
+      return false;
+    }
+
+    const parsedAmount = Number.parseFloat(amount);
+    const resolvedCurrency = String(currency || "USD").trim().toUpperCase() || "USD";
+    const resolvedCategory = String(category || "").trim().toLowerCase() || "other";
+    const resolvedExpenseDate = expenseDate || todayDateInputValue();
+    const resolvedVendorName = String(vendorName || "").trim();
+    const resolvedVendorEmail = String(vendorEmail || "").trim().toLowerCase();
+    const resolvedNote = String(note || "").trim();
+
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      pushToast({
+        title: "Amount required",
+        body: "Enter a valid expense amount greater than zero."
+      });
+      return false;
+    }
+
+    if (realFinanceEnabled) {
+      try {
+        const expense = expenseId
+          ? await api.updateFinanceExpense(authToken, expenseId, {
+              amount: parsedAmount,
+              currency: resolvedCurrency,
+              category: resolvedCategory,
+              expenseDate: resolvedExpenseDate,
+              vendorName: resolvedVendorName,
+              vendorEmail: resolvedVendorEmail,
+              note: resolvedNote,
+              receipt
+            }, activeWorkspaceId)
+          : await api.createFinanceExpense(authToken, {
+              amount: parsedAmount,
+              currency: resolvedCurrency,
+              category: resolvedCategory,
+              expenseDate: resolvedExpenseDate,
+              vendorName: resolvedVendorName,
+              vendorEmail: resolvedVendorEmail,
+              note: resolvedNote,
+              status: "pending_review",
+              receipt
+            }, activeWorkspaceId);
+        setWorkspaceState((current) =>
+          applyRealFinanceRecords(current, {
+            invoices: current.invoices.map((entry) => ({
+              id: entry.id,
+              invoiceNumber: entry.invoiceNumber,
+              vendorName: entry.companyName,
+              customerName: entry.companyName,
+              customerEmail: entry.customer?.email || "",
+              customer: entry.customer || null,
+              amount: entry.amount,
+              currency: entry.currency,
+              dueDate: entry.dueDate,
+              status: entry.recordStatus || entry.status,
+              paidAmount: entry.paidAmount || 0,
+              paidAt: entry.paidAt || null,
+              outstandingAmount: entry.outstandingAmount ?? Math.max(0, Number(entry.amount || 0) - Number(entry.paidAmount || 0)),
+              note: entry.note || "",
+              rejectionReason: entry.rejectionReason || "",
+              attachments: entry.attachments || [],
+              recurring: entry.recurring || {
+                enabled: false,
+                frequency: "monthly",
+                interval: 1,
+                nextIssueDate: null
+              },
+              updatedAt: entry.updatedAt,
+              createdAt: entry.createdAt
+            })),
+            expenses: current.expenses
+              .filter((entry) => !expenseId || entry.id !== expenseId)
+              .map((entry) => ({
+                id: entry.id,
+                amount: entry.amount,
+                currency: entry.currency,
+                category: entry.category,
+                vendorName: entry.vendorName || "",
+                vendorEmail: entry.vendor?.email || "",
+                vendor: entry.vendor || null,
+                note: entry.note || "",
+                receipt: entry.receipt || null,
+                status: entry.status,
+                updatedAt: entry.updatedAt,
+                createdAt: entry.createdAt,
+                expenseDate: entry.expenseDate
+              }))
+              .concat(expense)
+          })
+        );
+        pushToast({
+          title: expenseId ? "Expense updated" : "Expense created",
+          body: expenseId
+            ? `${formatMoney(expense.amount, expense.currency)} was updated in finance.`
+            : `${formatMoney(expense.amount, expense.currency)} was added to finance.`
+        });
+        void loadRealFinanceActivity();
+        setDraft("");
+        return true;
+      } catch (error) {
+        pushToast({
+          title: "Unable to create expense",
+          body: financeGuardrailMessage(error, "The expense could not be saved.")
+        });
+        return false;
+      }
+    }
+
+    appendBotAlert("financebot", "FinanceBot", `Expense draft created for ${formatMoney(parsedAmount || 0)}.`, {
+      type: "expense",
+      content: "Expense log drafted.",
+        metadata: {
+          amount: parsedAmount,
+          currency: resolvedCurrency,
+          category: resolvedCategory,
+          expenseDate: resolvedExpenseDate,
+          vendorName: resolvedVendorName,
+          vendor: {
+            id: null,
+            name: resolvedVendorName,
+            email: resolvedVendorEmail
+          },
+          note: resolvedNote,
+          receipt,
+          status: "draft",
+          logged: false
+        }
+      });
+    setDraft("");
+    return true;
+  }
+
+  async function handleDownloadInvoicePdf(message) {
+    const invoiceId = message?.metadata?.invoiceId;
+
+    if (!invoiceId || !authToken || !activeWorkspaceId || !realFinanceEnabled) {
+      return;
+    }
+
+    setDownloadingInvoicePdfId(invoiceId);
+
+    try {
+      const { blob, filename } = await api.downloadInvoicePdf(authToken, invoiceId, activeWorkspaceId);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename || `invoice-${message.metadata.invoiceNumber || invoiceId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 0);
+    } catch (error) {
+      pushToast({
+        title: "Unable to download invoice PDF",
+        body: financeGuardrailMessage(error, "The invoice PDF could not be generated.")
+      });
+    } finally {
+      setDownloadingInvoicePdfId(null);
+    }
+  }
+
+  return {
+    handleSaveFinanceCustomer,
+    handleSaveFinanceVendor,
+    handleApproveInvoice,
+    handleStartRejectInvoice,
+    handleRejectReasonChange,
+    handleConfirmRejectInvoice,
+    handleMarkInvoicePaid,
+    handleIssueRecurringInvoice,
+    handleReconcileInvoice,
+    handleExpenseNoteChange,
+    handleLogExpense,
+    handleApproveExpense,
+    handleStartRejectExpense,
+    handleRejectExpenseChange,
+    handleConfirmRejectExpense,
+    handleStartReimburseExpense,
+    handleReimburseExpenseChange,
+    handleConfirmReimburseExpense,
+    handleReconcileExpense,
+    createInvoiceEntry,
+    createExpenseEntry,
+    handleDownloadInvoicePdf
+  };
+}
+
+// ----- workspace/hooks/useWorkspaceBankingAndPayroll.js -----
+function useWorkspaceBankingAndPayroll({
+  authToken,
+  activeWorkspaceId,
+  realFinanceEnabled,
+  workspaceDefaultCurrency,
+  financeBankAccounts,
+  pushToast,
+  setFinancePayrollRecords,
+  setFinanceBankAccounts,
+  setFinanceBankTransactions,
+  loadRealFinanceState
+}) {
+  const loadPayrollRecords = useCallback(async (options = {}, tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realFinanceEnabled || !workspaceIdToUse) {
+      return [];
+    }
+
+    const payload = await api.getPayrollRecords(tokenToUse, workspaceIdToUse, options);
+    const records = Array.isArray(payload) ? payload : [];
+    setFinancePayrollRecords(records);
+    return records;
+  }, [activeWorkspaceId, authToken, realFinanceEnabled]);
+
+  const handleCreatePayrollRecord = useCallback(async (payload = {}) => {
+    if (!realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const record = await api.createPayrollRecord(authToken, payload, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Payroll record created",
+        body: `${record.employeeName || "Employee payroll"} is ready for approval.`
+      });
+      return record;
+    } catch (error) {
+      pushToast({
+        title: "Unable to create payroll",
+        body: error.message || "Please try again."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleApprovePayrollRecord = useCallback(async (recordId) => {
+    if (!recordId || !realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const record = await api.approvePayrollRecord(authToken, recordId, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Payroll approved",
+        body: `${record.employeeName || "Payroll record"} is ready to be paid.`
+      });
+      return record;
+    } catch (error) {
+      pushToast({
+        title: "Unable to approve payroll",
+        body: error.message || "Please try again."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handlePayPayrollRecord = useCallback(async (recordId, payload = {}) => {
+    if (!recordId || !realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const record = await api.payPayrollRecord(authToken, recordId, payload, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Payroll paid",
+        body: `${record.employeeName || "Payroll record"} has been marked as paid.`
+      });
+      return record;
+    } catch (error) {
+      pushToast({
+        title: "Unable to pay payroll",
+        body: error.message || "Please try again."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleCancelPayrollRecord = useCallback(async (recordId) => {
+    if (!recordId || !realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const record = await api.cancelPayrollRecord(authToken, recordId, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Payroll cancelled",
+        body: `${record.employeeName || "Payroll record"} has been cancelled.`
+      });
+      return record;
+    } catch (error) {
+      pushToast({
+        title: "Unable to cancel payroll",
+        body: error.message || "Please try again."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleCreateBankAccount = useCallback(async (payload) => {
+    const nextCurrency = normalizeCurrencyCode(payload?.currency || workspaceDefaultCurrency || "USD");
+    const nextBalance = Number.parseFloat(payload?.currentBalance ?? 0);
+
+    if (!String(payload?.accountName || "").trim()) {
+      pushToast({
+        title: "Bank account name required",
+        body: "Add an account name before saving."
+      });
+      return null;
+    }
+
+    if (!Number.isFinite(nextBalance)) {
+      pushToast({
+        title: "Balance required",
+        body: "Enter a valid current balance."
+      });
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const account = await api.createBankAccount(authToken, {
+          accountName: payload.accountName,
+          accountType: payload.accountType || "checking",
+          currency: nextCurrency,
+          currentBalance: nextBalance
+        }, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        pushToast({
+          title: "Bank account added",
+          body: `${account.accountName} is now tracked in Finance.`
+        });
+        return account;
+      } catch (error) {
+        pushToast({
+          title: "Unable to add bank account",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    const account = {
+      id: uid("bank"),
+      accountName: String(payload.accountName || "").trim(),
+      accountType: payload.accountType || "checking",
+      currency: nextCurrency,
+      currentBalance: roundMoney(nextBalance),
+      lastSyncedAt: new Date().toISOString(),
+      provider: "",
+      providerAccountId: "",
+      isManual: true,
+      status: "active",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setFinanceBankAccounts((current) => [account, ...current]);
+    return account;
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled, workspaceDefaultCurrency]);
+
+  const handleConnectPlaidBankAccount = useCallback(async (payload = {}) => {
+    if (!realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const linkPayload = await api.createPlaidLinkToken(authToken, activeWorkspaceId);
+      try {
+        await loadPlaidLinkScript();
+      } catch {
+        // Fall back to the token exchange path if the hosted script is unavailable.
+      }
+
+      const linkedAccount = await api.exchangePlaidToken(authToken, {
+        publicToken: payload.publicToken || linkPayload?.linkToken || `public-${Date.now()}`,
+        accountName: payload.accountName || "Plaid Connected Account",
+        currency: payload.currency || workspaceDefaultCurrency || "USD",
+        plaidAccountId: payload.plaidAccountId || "",
+        institutionName: payload.institutionName || "Plaid Bank",
+        mask: payload.mask || "0000",
+        accountType: payload.accountType || "checking"
+      }, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Bank connected",
+        body: `${linkedAccount.accountName} is now linked through Plaid.`
+      });
+      return linkedAccount;
+    } catch (error) {
+      pushToast({
+        title: "Unable to connect bank",
+        body: error.message || "Plaid connection could not be completed."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled, workspaceDefaultCurrency]);
+
+  const handleUpdateBankAccount = useCallback(async (accountId, payload) => {
+    if (!accountId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const account = await api.updateBankAccount(authToken, accountId, payload, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return account;
+      } catch (error) {
+        pushToast({
+          title: "Unable to update bank account",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    let updated = null;
+    setFinanceBankAccounts((current) =>
+      current.map((account) => {
+        if (account.id !== accountId) {
+          return account;
+        }
+        updated = { ...account, ...payload, updatedAt: new Date().toISOString() };
+        return updated;
+      })
+    );
+    return updated;
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleDeleteBankAccount = useCallback(async (accountId) => {
+    if (!accountId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const account = await api.deleteBankAccount(authToken, accountId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return account;
+      } catch (error) {
+        pushToast({
+          title: "Unable to disconnect bank account",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    setFinanceBankAccounts((current) => current.filter((account) => account.id !== accountId));
+    setFinanceBankTransactions((current) => {
+      const next = { ...current };
+      delete next[accountId];
+      return next;
+    });
+    return { id: accountId };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleCreateBankTransaction = useCallback(async (accountId, payload) => {
+    if (!accountId) {
+      return null;
+    }
+
+    const amount = Number.parseFloat(payload?.amount);
+    if (!Number.isFinite(amount) || amount === 0) {
+      pushToast({
+        title: "Transaction amount required",
+        body: "Enter a non-zero transaction amount."
+      });
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const transaction = await api.createBankTransaction(authToken, accountId, payload, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return transaction;
+      } catch (error) {
+        pushToast({
+          title: "Unable to add bank transaction",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    const account = financeBankAccounts.find((entry) => entry.id === accountId);
+    const transaction = {
+      id: uid("bank-tx"),
+      bankAccountId: accountId,
+      transactionDate: payload.transactionDate || todayDateInputValue(),
+      description: String(payload.description || "").trim(),
+      amount: roundMoney(amount),
+      currency: normalizeCurrencyCode(payload.currency || account?.currency || workspaceDefaultCurrency || "USD"),
+      category: String(payload.category || "other").trim(),
+      matchedExpenseId: "",
+      matchedInvoicePaymentId: "",
+      reconciled: false,
+      reconciledAt: null,
+      source: "manual",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    setFinanceBankTransactions((current) => ({
+      ...current,
+      [accountId]: [transaction, ...(current[accountId] || [])]
+    }));
+    setFinanceBankAccounts((current) =>
+      current.map((entry) =>
+        entry.id === accountId
+          ? {
+              ...entry,
+              currentBalance: roundMoney(Number(entry.currentBalance || 0) + transaction.amount),
+              lastSyncedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          : entry
+      )
+    );
+    return transaction;
+  }, [activeWorkspaceId, authToken, financeBankAccounts, loadRealFinanceState, pushToast, realFinanceEnabled, workspaceDefaultCurrency]);
+
+  const handleSyncBankTransactions = useCallback(async (accountId, transactions = []) => {
+    if (!accountId || !Array.isArray(transactions) || !transactions.length) {
+      pushToast({
+        title: "Import file required",
+        body: "Upload a CSV with date, description, amount, and currency columns."
+      });
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const result = await api.syncBankTransactions(authToken, accountId, transactions, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        pushToast({
+          title: "Transactions imported",
+          body: `${result.imported || 0} imported, ${result.duplicates || 0} duplicates skipped.`
+        });
+        return result;
+      } catch (error) {
+        pushToast({
+          title: "Unable to import transactions",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    let imported = 0;
+    setFinanceBankTransactions((current) => ({
+      ...current,
+      [accountId]: [
+        ...(transactions.map((transaction) => {
+          imported += 1;
+          return {
+            id: uid("bank-tx"),
+            bankAccountId: accountId,
+            transactionDate: transaction.transactionDate || todayDateInputValue(),
+            description: transaction.description,
+            amount: roundMoney(Number(transaction.amount || 0)),
+            currency: normalizeCurrencyCode(transaction.currency || workspaceDefaultCurrency || "USD"),
+            category: transaction.category || "other",
+            matchedExpenseId: "",
+            matchedInvoicePaymentId: "",
+            reconciled: false,
+            reconciledAt: null,
+            source: "bank_sync",
+            providerTransactionId: transaction.providerTransactionId || uid("provider-tx"),
+            matchConfidence: 0,
+            matchSuggestions: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+        })),
+        ...(current[accountId] || [])
+      ]
+    }));
+    setFinanceBankAccounts((current) =>
+      current.map((account) =>
+        account.id === accountId
+          ? { ...account, lastSyncedAt: new Date().toISOString() }
+          : account
+      )
+    );
+    pushToast({
+      title: "Transactions imported",
+      body: `${imported} transactions were added to the selected account.`
+    });
+    return { imported, duplicates: 0, errors: [] };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled, workspaceDefaultCurrency]);
+
+  const handleSyncPlaidAccount = useCallback(async (accountId) => {
+    if (!accountId || !realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const result = await api.syncPlaidAccount(authToken, accountId, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      pushToast({
+        title: "Plaid sync complete",
+        body: `${result.imported || 0} transactions imported.`
+      });
+      return result;
+    } catch (error) {
+      pushToast({
+        title: "Plaid sync failed",
+        body: error.message || "Unable to sync the linked bank account."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleRefreshPlaidBalance = useCallback(async (accountId) => {
+    if (!accountId || !realFinanceEnabled || !authToken || !activeWorkspaceId) {
+      return null;
+    }
+
+    try {
+      const result = await api.refreshPlaidBalance(authToken, accountId, activeWorkspaceId);
+      await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+      return result;
+    } catch (error) {
+      pushToast({
+        title: "Balance refresh failed",
+        body: error.message || "Unable to refresh the linked account balance."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleAutoMatchBankTransactions = useCallback(async (accountId) => {
+    if (!accountId) {
+      return [];
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const suggestions = await api.autoMatchBankTransactions(authToken, accountId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        pushToast({
+          title: "Auto-match complete",
+          body: `${Array.isArray(suggestions) ? suggestions.length : 0} transactions were reviewed for match suggestions.`
+        });
+        return suggestions;
+      } catch (error) {
+        pushToast({
+          title: "Unable to auto-match transactions",
+          body: error.message || "Please try again."
+        });
+        return [];
+      }
+    }
+
+    return [];
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleMatchBankTransactionExpense = useCallback(async (transactionId, expenseId) => {
+    if (!transactionId || !expenseId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const transaction = await api.matchTransactionExpense(authToken, transactionId, expenseId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return transaction;
+      } catch (error) {
+        pushToast({
+          title: "Unable to match expense",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    setFinanceBankTransactions((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([accountId, entries]) => [
+          accountId,
+          entries.map((entry) => (entry.id === transactionId ? { ...entry, matchedExpenseId: expenseId, updatedAt: new Date().toISOString() } : entry))
+        ])
+      )
+    );
+    return { id: transactionId, matchedExpenseId: expenseId };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleMatchBankTransactionPayment = useCallback(async (transactionId, paymentId) => {
+    if (!transactionId || !paymentId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const transaction = await api.matchTransactionPayment(authToken, transactionId, paymentId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return transaction;
+      } catch (error) {
+        pushToast({
+          title: "Unable to match payment",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    setFinanceBankTransactions((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([accountId, entries]) => [
+          accountId,
+          entries.map((entry) => (entry.id === transactionId ? { ...entry, matchedInvoicePaymentId: paymentId, updatedAt: new Date().toISOString() } : entry))
+        ])
+      )
+    );
+    return { id: transactionId, matchedInvoicePaymentId: paymentId };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleReconcileBankTransaction = useCallback(async (transactionId) => {
+    if (!transactionId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const transaction = await api.reconcileTransaction(authToken, transactionId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        return transaction;
+      } catch (error) {
+        pushToast({
+          title: "Unable to reconcile transaction",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    setFinanceBankTransactions((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([accountId, entries]) => [
+          accountId,
+          entries.map((entry) =>
+            entry.id === transactionId
+              ? { ...entry, reconciled: true, reconciledAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+              : entry
+          )
+        ])
+      )
+    );
+    return { id: transactionId, reconciled: true };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  const handleReconcileMatchedBankTransactions = useCallback(async (accountId) => {
+    if (!accountId) {
+      return null;
+    }
+
+    if (realFinanceEnabled && authToken && activeWorkspaceId) {
+      try {
+        const result = await api.reconcileMatchedBankTransactions(authToken, accountId, activeWorkspaceId);
+        await loadRealFinanceState(authToken, { toastOnSuccess: false }, activeWorkspaceId);
+        pushToast({
+          title: "Matched transactions reconciled",
+          body: `${result.modifiedCount || result.reconciled || 0} matched transactions were marked reconciled.`
+        });
+        return result;
+      } catch (error) {
+        pushToast({
+          title: "Unable to reconcile matched transactions",
+          body: error.message || "Please try again."
+        });
+        return null;
+      }
+    }
+
+    setFinanceBankTransactions((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([entryAccountId, entries]) => [
+          entryAccountId,
+          entryAccountId === accountId
+            ? entries.map((entry) =>
+                entry.matchedExpenseId || entry.matchedInvoicePaymentId
+                  ? { ...entry, reconciled: true, reconciledAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+                  : entry
+              )
+            : entries
+        ])
+      )
+    );
+    return { reconciled: true };
+  }, [activeWorkspaceId, authToken, loadRealFinanceState, pushToast, realFinanceEnabled]);
+
+  return {
+    loadPayrollRecords,
+    handleCreatePayrollRecord,
+    handleApprovePayrollRecord,
+    handlePayPayrollRecord,
+    handleCancelPayrollRecord,
+    handleCreateBankAccount,
+    handleConnectPlaidBankAccount,
+    handleUpdateBankAccount,
+    handleDeleteBankAccount,
+    handleCreateBankTransaction,
+    handleSyncBankTransactions,
+    handleSyncPlaidAccount,
+    handleRefreshPlaidBalance,
+    handleAutoMatchBankTransactions,
+    handleMatchBankTransactionExpense,
+    handleMatchBankTransactionPayment,
+    handleReconcileBankTransaction,
+    handleReconcileMatchedBankTransactions
+  };
+}
+
+// ----- workspace/hooks/useWorkspaceNavigationAndThreads.js -----
+function useWorkspaceNavigationAndThreads({
+  authToken,
+  activeWorkspaceId,
+  pushToast,
+  setWorkspaceState,
+  setActiveWorkspaceId,
+  setActiveThreadId,
+  setActiveTab,
+  setDetailMetric,
+  setDraft,
+  activeThreadId,
+  workspaceState,
+  activeThread,
+  draft,
+  realWorkspaceEnabled,
+  loadWorkspaceConversations,
+  loadExecutionSummary,
+  loadWorkspaceNotifications,
+  projectLinkTargetMessage,
+  projectLinkSelectedProjectId,
+  setProjectLinkTargetMessage,
+  setProjectLinkSelectedProjectId,
+  setProjectLinkOptions,
+  setProjectLinkOptionsLoading,
+  setProjectLinkSubmitting,
+  buildTaskPayloadFromMessage,
+  buildProjectPayloadFromMessage,
+  buildConversationSourcePayloadFromMessage,
+  upsertWorkspaceConversationThread
+}) {
+  function handleSelectWorkspace(nextWorkspaceId) {
+    if (!nextWorkspaceId || nextWorkspaceId === activeWorkspaceId) {
+      return;
+    }
+
+    setDetailMetric(null);
+    setActiveWorkspaceId(nextWorkspaceId);
+  }
+
+  function updateThread(threadId, updater) {
+    setWorkspaceState((current) => ({
+      ...current,
+      threads: sortThreads(
+        current.threads.map((thread) => (thread.id === threadId ? updater(thread) : thread))
+      )
+    }));
+  }
+
+  function appendMessage(threadId, message, options = {}) {
+    setWorkspaceState((current) => {
+      const nextThreads = current.threads.map((thread) => {
+        if (thread.id !== threadId) {
+          return thread;
+        }
+
+        const nextMessage = {
+          id: uid("msg"),
+          senderId: options.senderId || current.currentUser.id,
+          senderName: options.senderName || current.currentUser.name,
+          createdAt: new Date().toISOString(),
+          ...message
+        };
+        const shouldIncrementUnread =
+          thread.id !== activeThreadId &&
+          (thread.isBot || nextMessage.senderId !== current.currentUser.id);
+
+        return {
+          ...thread,
+          messages: [...thread.messages, nextMessage],
+          updatedAt: nextMessage.createdAt,
+          unread: shouldIncrementUnread ? thread.unread + 1 : thread.unread,
+          preview: messagePreview(nextMessage)
+        };
+      });
+
+      const sorted = options.bringToTop ? moveThreadToTop(sortThreads(nextThreads), threadId) : sortThreads(nextThreads);
+      return { ...current, threads: sorted };
+    });
+  }
+
+  function appendBotAlert(threadId, title, body, message) {
+    appendMessage(
+      threadId,
+      message,
+      {
+        senderId: threadId,
+        senderName: title,
+        bringToTop: true
+      }
+    );
+    pushToast({ title, body, threadId });
+  }
+
+  function openThread(threadId) {
+    setActiveThreadId(threadId);
+    setActiveTab("Chat");
+    setWorkspaceState((current) => ({
+      ...current,
+      threads: current.threads.map((thread) =>
+        thread.id === threadId ? { ...thread, unread: 0 } : thread
+      )
+    }));
+  }
+
+  function decrementThreadUnread(threadId) {
+    setWorkspaceState((current) => ({
+      ...current,
+      threads: current.threads.map((thread) =>
+        thread.id === threadId
+          ? { ...thread, unread: Math.max(0, thread.unread - 1) }
+          : thread
+      )
+    }));
+  }
+
+  function updateMessage(threadId, messageId, updater) {
+    setWorkspaceState((current) => ({
+      ...current,
+      threads: current.threads.map((thread) => {
+        if (thread.id !== threadId) {
+          return thread;
+        }
+
+        const messages = thread.messages.map((message) =>
+          message.id === messageId ? updater(message) : message
+        );
+        return {
+          ...thread,
+          messages,
+          preview: messagePreview(messages[messages.length - 1])
+        };
+      })
+    }));
+  }
+
+  async function handleSendText() {
+    if (!draft.trim() || !activeThread) {
+      return;
+    }
+
+    if (realWorkspaceEnabled && !activeThread.isBot && activeThread.conversationId) {
+      try {
+        const conversation = await api.sendWorkspaceConversationMessage(
+          authToken,
+          activeThread.conversationId,
+          { content: draft.trim() },
+          activeWorkspaceId
+        );
+        setWorkspaceState((current) => upsertWorkspaceConversationThread(current, conversation));
+        setDraft("");
+        return;
+      } catch (error) {
+        pushToast({
+          title: "Unable to send workspace message",
+          body: error.message || "Please try again."
+        });
+        return;
+      }
+    }
+
+    appendMessage(activeThread.id, {
+      type: "text",
+      content: draft.trim()
+    });
+    setDraft("");
+  }
+
+  async function handleCreateTaskFromMessage(message) {
+    if (!authToken || !activeWorkspaceId || !activeThread?.conversationId || activeThread?.isBot) {
+      return;
+    }
+
+    try {
+      const task = await api.createWorkspaceTask(
+        authToken,
+        buildTaskPayloadFromMessage(message, activeThread),
+        activeWorkspaceId
+      );
+      await Promise.all([
+        loadWorkspaceConversations(authToken, activeWorkspaceId),
+        loadExecutionSummary(authToken, activeWorkspaceId),
+        loadWorkspaceNotifications(authToken, activeWorkspaceId, { toastOnError: false })
+      ]);
+      pushToast({
+        title: "Task linked to conversation",
+        body: `${task.title} is now tracked from this thread.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to create linked task",
+        body: error.message || "Please try again."
+      });
+    }
+  }
+
+  async function handleCreateProjectFromMessage(message) {
+    if (!authToken || !activeWorkspaceId || !activeThread?.conversationId || activeThread?.isBot) {
+      return;
+    }
+
+    try {
+      const project = await api.createWorkspaceProject(
+        authToken,
+        buildProjectPayloadFromMessage(message, activeThread),
+        activeWorkspaceId
+      );
+      await Promise.all([
+        loadWorkspaceConversations(authToken, activeWorkspaceId),
+        loadExecutionSummary(authToken, activeWorkspaceId),
+        loadWorkspaceNotifications(authToken, activeWorkspaceId, { toastOnError: false })
+      ]);
+      pushToast({
+        title: "Project linked to conversation",
+        body: `${project.name} is now tracked from this thread.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to create linked project",
+        body: error.message || "Please try again."
+      });
+    }
+  }
+
+  async function handleOpenProjectLinkPicker(message) {
+    if (!authToken || !activeWorkspaceId || !activeThread?.conversationId || activeThread?.isBot || !message) {
+      return;
+    }
+
+    setProjectLinkTargetMessage(message);
+    setProjectLinkSelectedProjectId("");
+    setProjectLinkOptionsLoading(true);
+
+    try {
+      const payload = await api.getWorkspaceProjects(authToken, activeWorkspaceId);
+      const nextProjects = Array.isArray(payload?.projects) ? payload.projects : [];
+      const practicalProjects = nextProjects.filter((project) => project.status !== "completed");
+      const resolvedProjects = practicalProjects.length ? practicalProjects : nextProjects;
+      setProjectLinkOptions(resolvedProjects);
+    } catch (error) {
+      setProjectLinkOptions([]);
+      pushToast({
+        title: "Projects unavailable",
+        body: error.message || "Unable to load projects for attachment."
+      });
+    } finally {
+      setProjectLinkOptionsLoading(false);
+    }
+  }
+
+  function handleCancelProjectLink() {
+    setProjectLinkTargetMessage(null);
+    setProjectLinkSelectedProjectId("");
+  }
+
+  async function handleConfirmProjectLink() {
+    if (!authToken || !activeWorkspaceId || !projectLinkTargetMessage || !projectLinkSelectedProjectId || !activeThread?.conversationId) {
+      return;
+    }
+
+    setProjectLinkSubmitting(true);
+    try {
+      const response = await api.attachWorkspaceProjectConversationLink(
+        authToken,
+        projectLinkSelectedProjectId,
+        buildConversationSourcePayloadFromMessage(projectLinkTargetMessage, activeThread),
+        activeWorkspaceId
+      );
+
+      await loadWorkspaceConversations(authToken, activeWorkspaceId);
+      pushToast({
+        title: response?.alreadyLinked ? "Project already linked" : "Conversation attached to project",
+        body: response?.project?.name
+          ? `${response.project.name} is now connected to this conversation.`
+          : "The selected project is now connected to this conversation."
+      });
+      setProjectLinkTargetMessage(null);
+      setProjectLinkSelectedProjectId("");
+    } catch (error) {
+      pushToast({
+        title: "Unable to attach project",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setProjectLinkSubmitting(false);
+    }
+  }
+
+  return {
+    handleSelectWorkspace,
+    updateThread,
+    appendMessage,
+    appendBotAlert,
+    openThread,
+    decrementThreadUnread,
+    updateMessage,
+    handleSendText,
+    handleCreateTaskFromMessage,
+    handleCreateProjectFromMessage,
+    handleOpenProjectLinkPicker,
+    handleCancelProjectLink,
+    handleConfirmProjectLink
+  };
+}
+
+function useWorkspaceNavigationActions({
+  authToken,
+  activeWorkspaceId,
+  markingAllWorkspaceNotificationsRead,
+  workspaceNotificationCount,
+  pushToast,
+  setMarkingAllWorkspaceNotificationsRead,
+  setWorkspaceNotifications,
+  setWorkspaceNotificationCount,
+  setDetailMetric,
+  setActiveNav,
+  setActiveTab,
+  setDraft,
+  effectiveWorkspaceScope,
+  financePermissions,
+  workspaceState,
+  financeSummary,
+  financeProfitLossReport,
+  financeCashFlowReport,
+  warehouseInventoryValueReport,
+  workspaceDefaultCurrency,
+  warehouseSummary,
+  executionSummary,
+  userRole,
+  financeBankAccounts,
+  activeThread,
+  openThread,
+  metricCards,
+  appendMessage,
+  createInvoiceEntry,
+  createExpenseEntry,
+  createWarehouseProductEntry,
+  createWarehouseOrderEntry
+}) {
+  const handleMarkAllWorkspaceNotificationsRead = useCallback(async () => {
+    if (!authToken || !activeWorkspaceId || markingAllWorkspaceNotificationsRead || !workspaceNotificationCount) {
+      return;
+    }
+
+    setMarkingAllWorkspaceNotificationsRead(true);
+    try {
+      await api.markAllWorkspaceNotificationsRead(authToken, activeWorkspaceId);
+      setWorkspaceNotifications([]);
+      setWorkspaceNotificationCount(0);
+    } catch (error) {
+      pushToast({
+        title: "Unable to mark notifications",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setMarkingAllWorkspaceNotificationsRead(false);
+    }
+  }, [activeWorkspaceId, authToken, markingAllWorkspaceNotificationsRead, pushToast, workspaceNotificationCount]);
+
+  function handleOverviewNavigate(target) {
+    if (!target?.scope) {
+      return;
+    }
+
+    if (target.scope === "tasks") {
+      const taskUrl = new URL(window.location.href);
+      taskUrl.searchParams.set("view", "tasks");
+      if (target.taskView) {
+        taskUrl.searchParams.set("taskView", target.taskView);
+      } else {
+        taskUrl.searchParams.delete("taskView");
+      }
+      if (target.taskId) {
+        taskUrl.searchParams.set("taskId", target.taskId);
+      } else {
+        taskUrl.searchParams.delete("taskId");
+      }
+      if (target.projectId) {
+        taskUrl.searchParams.set("projectId", target.projectId);
+      } else {
+        taskUrl.searchParams.delete("projectId");
+      }
+      if (target.projectName) {
+        taskUrl.searchParams.set("projectName", target.projectName);
+      } else {
+        taskUrl.searchParams.delete("projectName");
+      }
+      if (target.composer) {
+        taskUrl.searchParams.set("composer", target.composer);
+      } else {
+        taskUrl.searchParams.delete("composer");
+      }
+      const popup = window.open(
+        taskUrl.toString(),
+        "witch-task-window",
+        "popup=yes,width=1180,height=860,left=90,top=60,resizable=yes,scrollbars=yes"
+      );
+
+      if (popup) {
+        popup.focus();
+        return;
+      }
+
+      window.location.href = taskUrl.toString();
+      return;
+    }
+
+    if (target.scope === "projects") {
+      const projectUrl = new URL(window.location.href);
+      projectUrl.searchParams.set("view", "projects");
+      if (target.projectId) {
+        projectUrl.searchParams.set("projectId", target.projectId);
+      } else {
+        projectUrl.searchParams.delete("projectId");
+      }
+      if (target.composer) {
+        projectUrl.searchParams.set("composer", target.composer);
+      } else {
+        projectUrl.searchParams.delete("composer");
+      }
+      if (target.projectName) {
+        projectUrl.searchParams.set("projectName", target.projectName);
+      } else {
+        projectUrl.searchParams.delete("projectName");
+      }
+      const popup = window.open(
+        projectUrl.toString(),
+        "witch-project-window",
+        "popup=yes,width=1240,height=900,left=100,top=60,resizable=yes,scrollbars=yes"
+      );
+
+      if (popup) {
+        popup.focus();
+        return;
+      }
+
+      window.location.href = projectUrl.toString();
+      return;
+    }
+
+    if (!canAccessWorkspaceScope(target.scope, effectiveWorkspaceScope)) {
+      return;
+    }
+
+    const threadId = target.scope === "warehouse" ? "warebot" : "financebot";
+    setDetailMetric(null);
+    setActiveNav(target.scope === "warehouse" ? "warehouse" : "finances");
+    openThread(threadId);
+
+    if (target.tab) {
+      setActiveTab(target.tab);
+    }
+
+    if (target.metricId) {
+      const metric = metricCards.find((entry) => entry.id === target.metricId);
+      if (metric) {
+        setDetailMetric(metric);
+      }
+    }
+  }
+
+  const handleOpenWorkspaceNotification = useCallback(async (notification) => {
+    if (!notification) {
+      return;
+    }
+
+    if (authToken && activeWorkspaceId && notification.id) {
+      try {
+        await api.markWorkspaceNotificationRead(authToken, notification.id, activeWorkspaceId);
+      } catch {
+        // Ignore read-state sync failures and continue opening the target.
+      }
+    }
+
+    setWorkspaceNotifications((current) => current.filter((entry) => entry.id !== notification.id));
+    setWorkspaceNotificationCount((current) => Math.max(0, current - 1));
+
+    if (notification.referenceType === "project") {
+      handleOverviewNavigate({
+        scope: "projects",
+        projectId: notification.referenceId
+      });
+      return;
+    }
+
+    handleOverviewNavigate({
+      scope: "tasks",
+      taskId: notification.referenceId,
+      taskView:
+        notification.type === "task_overdue"
+          ? "overdue"
+          : notification.type === "task_due_soon"
+            ? "today"
+            : "my"
+    });
+  }, [activeWorkspaceId, authToken]);
+
+  function buildReportMetrics() {
+    const pendingInvoices = workspaceState.invoices.filter((invoice) => ["pending", "partial"].includes(invoice.status));
+    const overdueInvoices = workspaceState.invoices.filter((invoice) => invoice.status === "overdue");
+    const lowStock = workspaceState.products.filter(isWarehouseLowStock);
+    const inTransit = workspaceState.orders.filter((order) => order.status === "in_transit");
+    const grossProfit = financeProfitLossReport?.normalizedTotals?.grossProfit || 0;
+    const netCashFlow = financeCashFlowReport?.normalizedTotals?.netCashFlow || 0;
+    const inventoryValue = warehouseInventoryValueReport
+      ? sumCurrencyBucketInBaseCurrency(warehouseInventoryValueReport.totals || {}, workspaceDefaultCurrency)
+      : 0;
+    return [
+      { label: "Pending invoices", value: `${pendingInvoices.length}` },
+      { label: "Overdue", value: `${overdueInvoices.length}` },
+      { label: "Low stock", value: `${lowStock.length}` },
+      { label: "In transit", value: `${inTransit.length}` },
+      { label: "Gross profit", value: `approx. ${formatMoney(grossProfit, workspaceDefaultCurrency)}` },
+      { label: "Net cash flow", value: `approx. ${formatMoney(netCashFlow, workspaceDefaultCurrency)}` },
+      { label: "Inventory value", value: `approx. ${formatMoney(inventoryValue, workspaceDefaultCurrency)}` }
+    ];
+  }
+
+  async function runCommand(commandText) {
+    const trimmed = commandText.trim();
+    const [command, ...rest] = trimmed.split(/\s+/);
+    const matchingCommand = COMMAND_ITEMS.find((item) => item.command.split(" ")[0] === command);
+
+    if (!command.startsWith("/")) {
+      setDraft(commandText);
+      return;
+    }
+
+    if (matchingCommand && !canAccessWorkspaceScope(matchingCommand.scope, effectiveWorkspaceScope)) {
+      pushToast({
+        title: "Command unavailable here",
+        body: `Switch to the ${matchingCommand.scope} workspace to use ${command}.`
+      });
+      return;
+    }
+
+    if (matchingCommand?.scope === "finance") {
+      const needsCreateAccess = command === "/invoice" || command === "/expense";
+      const allowed = needsCreateAccess ? financePermissions.canCreate : financePermissions.canView;
+      if (!allowed) {
+        pushToast({
+          title: "Command unavailable",
+          body: needsCreateAccess
+            ? "Your finance role does not allow creating or editing finance records."
+            : "Your finance role does not allow using this finance command."
+        });
+        return;
+      }
+    }
+
+    if (command === "/report" && activeThread && canAccessWorkspaceScope("finance", effectiveWorkspaceScope) && financePermissions.canView) {
+      appendMessage(activeThread.id, {
+        type: "report",
+        content: "Business report generated.",
+        metadata: {
+          metrics: buildReportMetrics()
+        }
+      });
+      setDraft("");
+      return;
+    }
+
+    if (command === "/invoice" && canAccessWorkspaceScope("finance", effectiveWorkspaceScope) && financePermissions.canCreate) {
+      const invoiceNumber = rest[0] || `#INV-${Math.floor(Math.random() * 900 + 100)}`;
+      await createInvoiceEntry({
+        invoiceNumber,
+        customerName: activeThread?.isBot ? "Client account" : activeThread?.name || "Client account",
+        amount: rest[1] || "9800",
+        dueDate: new Date(Date.now() + 86400000 * 3).toISOString().slice(0, 10)
+      });
+      return;
+    }
+
+    if (command === "/stock" && canAccessWorkspaceScope("warehouse", effectiveWorkspaceScope)) {
+      await createWarehouseProductEntry({
+        name: rest.join(" ") || "Unknown item",
+        sku: `SKU-${Math.floor(Math.random() * 900 + 100)}`,
+        currentStock: 22,
+        minimumStock: 50,
+        reorderQuantity: 150
+      });
+      return;
+    }
+
+    if (command === "/expense" && canAccessWorkspaceScope("finance", effectiveWorkspaceScope) && financePermissions.canCreate) {
+      await createExpenseEntry({
+        amount: rest[0] || "",
+        category: rest[1] || "other",
+        vendorName: "",
+        note: ""
+      });
+      return;
+    }
+
+    if (command === "/order" && canAccessWorkspaceScope("warehouse", effectiveWorkspaceScope)) {
+      await createWarehouseOrderEntry({
+        orderNumber: rest[0] || `#ORD-${Math.floor(Math.random() * 9000 + 1000)}`,
+        destination: "Regional Delivery Hub",
+        estimatedDelivery: new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10),
+        status: "dispatched",
+        currentStep: 1
+      });
+    }
+  }
+
+  return {
+    handleMarkAllWorkspaceNotificationsRead,
+    handleOverviewNavigate,
+    handleOpenWorkspaceNotification,
+    runCommand
+  };
+}
+
+// ----- workspace/hooks/useWorkspaceAdminAndPlatform.js -----
+function useWorkspaceAdminAndPlatformLoaders({
+  authToken,
+  activeWorkspaceId,
+  selectedPlatformWorkspaceId,
+  realWorkspaceEnabled,
+  canBootstrapManageFinanceMembers,
+  canManageFinanceMembers,
+  realFinanceEnabled,
+  pushToast,
+  applyRealWorkspaceConversations,
+  setWorkspaceSettings,
+  setWorkspaceSettingsLoading,
+  setPlatformWorkspaces,
+  setPlatformWorkspacesLoading,
+  setSelectedPlatformWorkspaceId,
+  setPlatformWorkspaceMembers,
+  setPlatformWorkspaceMembersLoading,
+  setPlatformCreatingWorkspace,
+  setPlatformProvisioningMember,
+  setPlatformSavingMemberId,
+  setFinanceMembers,
+  setFinanceMembersLoading,
+  setWorkspaceState,
+  setFinanceActivity
+}) {
+  const loadWorkspaceSettings = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId, options = {}) => {
+    if (!tokenToUse || !realWorkspaceEnabled) {
+      setWorkspaceSettings(null);
+      return null;
+    }
+
+    if (!workspaceIdToUse) {
+      return null;
+    }
+
+    setWorkspaceSettingsLoading(true);
+    try {
+      const settings = await api.getWorkspaceSettings(tokenToUse, workspaceIdToUse);
+      setWorkspaceSettings(settings);
+      if (options.toastOnSuccess) {
+        pushToast({
+          title: "Workspace refreshed",
+          body: "Workspace settings and member summary are now up to date."
+        });
+      }
+      return settings;
+    } catch (error) {
+      if (options.toastOnSuccess) {
+        pushToast({
+          title: "Workspace refresh failed",
+          body: error.message || "Unable to load workspace settings."
+        });
+      }
+      return null;
+    } finally {
+      setWorkspaceSettingsLoading(false);
+    }
+  }, [activeWorkspaceId, authToken, realWorkspaceEnabled]);
+
+  const loadPlatformWorkspaces = useCallback(async (tokenToUse = authToken) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !canBootstrapManageFinanceMembers) {
+      setPlatformWorkspaces([]);
+      setSelectedPlatformWorkspaceId(null);
+      return [];
+    }
+
+    setPlatformWorkspacesLoading(true);
+    try {
+      const payload = await api.getPlatformWorkspaces(tokenToUse);
+      const nextWorkspaces = Array.isArray(payload?.workspaces) ? payload.workspaces : [];
+      setPlatformWorkspaces(nextWorkspaces);
+      setSelectedPlatformWorkspaceId((current) => {
+        const validIds = new Set(nextWorkspaces.map((entry) => entry.workspace?.id).filter(Boolean));
+        if (current && validIds.has(current)) {
+          return current;
+        }
+
+        if (activeWorkspaceId && validIds.has(activeWorkspaceId)) {
+          return activeWorkspaceId;
+        }
+
+        return nextWorkspaces[0]?.workspace?.id || null;
+      });
+      return nextWorkspaces;
+    } catch (error) {
+      setPlatformWorkspaces([]);
+      pushToast({
+        title: "Platform workspaces unavailable",
+        body: error.message || "Unable to load customer workspaces."
+      });
+      return [];
+    } finally {
+      setPlatformWorkspacesLoading(false);
+    }
+  }, [activeWorkspaceId, authToken, canBootstrapManageFinanceMembers, realWorkspaceEnabled]);
+
+  const loadPlatformWorkspaceMembers = useCallback(async (tokenToUse = authToken, workspaceIdToUse = selectedPlatformWorkspaceId) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !canBootstrapManageFinanceMembers || !workspaceIdToUse) {
+      setPlatformWorkspaceMembers([]);
+      return [];
+    }
+
+    setPlatformWorkspaceMembersLoading(true);
+    try {
+      const payload = await api.getPlatformWorkspaceMembers(tokenToUse, workspaceIdToUse);
+      const nextMembers = Array.isArray(payload?.members) ? payload.members.map(normalizePlatformWorkspaceMember) : [];
+      setPlatformWorkspaceMembers(nextMembers);
+      return nextMembers;
+    } catch (error) {
+      setPlatformWorkspaceMembers([]);
+      pushToast({
+        title: "Customer members unavailable",
+        body: error.message || "Unable to load members for the selected workspace."
+      });
+      return [];
+    } finally {
+      setPlatformWorkspaceMembersLoading(false);
+    }
+  }, [authToken, canBootstrapManageFinanceMembers, realWorkspaceEnabled, selectedPlatformWorkspaceId]);
+
+  const loadWorkspaceConversations = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse) {
+      return null;
+    }
+
+    try {
+      const conversations = await api.getWorkspaceConversations(tokenToUse, workspaceIdToUse);
+      setWorkspaceState((current) => applyRealWorkspaceConversations(current, conversations));
+      return conversations;
+    } catch (error) {
+      pushToast({
+        title: "Workspace conversations unavailable",
+        body: error.message || "Unable to load workspace conversations."
+      });
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, realWorkspaceEnabled]);
+
+  const loadRealFinanceActivity = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realFinanceEnabled || !workspaceIdToUse) {
+      setFinanceActivity([]);
+      return;
+    }
+
+    try {
+      const actions = await api.getFinanceActivity(tokenToUse, { limit: 24 }, workspaceIdToUse);
+      setFinanceActivity(actions);
+    } catch (error) {
+      pushToast({
+        title: "Finance activity unavailable",
+        body: error.message || "Unable to load finance activity."
+      });
+    }
+  }, [activeWorkspaceId, authToken, realFinanceEnabled]);
+
+  const loadFinanceMembers = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !canManageFinanceMembers || !workspaceIdToUse) {
+      setFinanceMembers([]);
+      return;
+    }
+
+    setFinanceMembersLoading(true);
+    try {
+      const members = await api.getWorkspaceMembers(tokenToUse, workspaceIdToUse);
+      setFinanceMembers(members);
+    } catch (error) {
+      pushToast({
+        title: "Workspace members unavailable",
+        body: error.message || "Unable to load workspace member access."
+      });
+    } finally {
+      setFinanceMembersLoading(false);
+    }
+  }, [activeWorkspaceId, authToken, realWorkspaceEnabled, canManageFinanceMembers]);
+
+  const handleCreatePlatformWorkspace = useCallback(async (payload) => {
+    if (!authToken) {
+      return null;
+    }
+
+    setPlatformCreatingWorkspace(true);
+    try {
+      const response = await api.createPlatformWorkspace(authToken, payload);
+      await loadPlatformWorkspaces(authToken);
+      pushToast({
+        title: "Workspace created",
+        body: `${response.workspace?.name || "Workspace"} is ready for customer provisioning.`
+      });
+      return response.workspace || null;
+    } catch (error) {
+      pushToast({
+        title: "Workspace creation failed",
+        body: error.message || "Unable to create the workspace."
+      });
+      return null;
+    } finally {
+      setPlatformCreatingWorkspace(false);
+    }
+  }, [authToken, loadPlatformWorkspaces]);
+
+  const handleProvisionPlatformWorkspaceMember = useCallback(async (workspaceId, payload) => {
+    if (!authToken || !workspaceId) {
+      return null;
+    }
+
+    setPlatformProvisioningMember(true);
+    try {
+      const response = await api.provisionPlatformWorkspaceMember(authToken, workspaceId, payload);
+      await Promise.all([
+        loadPlatformWorkspaces(authToken),
+        loadPlatformWorkspaceMembers(authToken, workspaceId)
+      ]);
+      pushToast({
+        title: "Customer access granted",
+        body: `${response.member?.user?.email || payload.email} can now use the assigned workspace access.`
+      });
+      return response.member || null;
+    } catch (error) {
+      pushToast({
+        title: "Provisioning failed",
+        body: error.message || "Unable to create or assign the customer account."
+      });
+      return null;
+    } finally {
+      setPlatformProvisioningMember(false);
+    }
+  }, [authToken, loadPlatformWorkspaceMembers, loadPlatformWorkspaces]);
+
+  const handleUpdatePlatformMemberAccess = useCallback(async (member, updates = {}) => {
+    if (!authToken || !selectedPlatformWorkspaceId || !member?.id) {
+      return;
+    }
+
+    setPlatformSavingMemberId(member.id);
+    try {
+      if (Object.keys(updates).length === 1 && updates.workspaceEnabled !== undefined) {
+        await api.updatePlatformWorkspaceMemberStatus(
+          authToken,
+          selectedPlatformWorkspaceId,
+          member.id,
+          updates.workspaceEnabled ? "active" : "suspended"
+        );
+      } else {
+        const payload = {};
+
+        if (updates.workspaceEnabled !== undefined) {
+          payload.status = updates.workspaceEnabled ? "active" : "suspended";
+        }
+
+        if (updates.workspaceRole !== undefined) {
+          payload.workspaceRole = updates.workspaceRole;
+        }
+
+        if (updates.workspaceModules !== undefined) {
+          payload.modules = updates.workspaceModules;
+        }
+
+        await api.updatePlatformWorkspaceMember(authToken, selectedPlatformWorkspaceId, member.id, payload);
+      }
+
+      await Promise.all([
+        loadPlatformWorkspaces(authToken),
+        loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId)
+      ]);
+    } catch (error) {
+      pushToast({
+        title: "Customer access update failed",
+        body: error.message || "Unable to update the selected workspace member."
+      });
+    } finally {
+      setPlatformSavingMemberId(null);
+    }
+  }, [authToken, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+
+  const handleTogglePlatformFinanceRole = useCallback(async (member, roleId) => {
+    if (!authToken || !selectedPlatformWorkspaceId || !member?.id) {
+      return;
+    }
+
+    const currentRoles = Array.isArray(member.workspaceRoles) ? member.workspaceRoles : [];
+    const nextRoles = currentRoles.includes(roleId)
+      ? currentRoles.filter((entry) => entry !== roleId)
+      : [...currentRoles, roleId];
+
+    setPlatformSavingMemberId(member.id);
+    try {
+      await api.updatePlatformWorkspaceMember(authToken, selectedPlatformWorkspaceId, member.id, {
+        financeRoles: nextRoles
+      });
+
+      await Promise.all([
+        loadPlatformWorkspaces(authToken),
+        loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId)
+      ]);
+    } catch (error) {
+      pushToast({
+        title: "Finance role update failed",
+        body: error.message || "Unable to update finance roles for this customer."
+      });
+    } finally {
+      setPlatformSavingMemberId(null);
+    }
+  }, [authToken, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+
+  return {
+    loadWorkspaceSettings,
+    loadPlatformWorkspaces,
+    loadPlatformWorkspaceMembers,
+    loadWorkspaceConversations,
+    loadRealFinanceActivity,
+    loadFinanceMembers,
+    handleCreatePlatformWorkspace,
+    handleProvisionPlatformWorkspaceMember,
+    handleUpdatePlatformMemberAccess,
+    handleTogglePlatformFinanceRole
+  };
+}
+
+function useWorkspaceAdminAndPlatformActions({
+  authToken,
+  activeWorkspaceId,
+  realWorkspaceEnabled,
+  financeAccountingPeriod = "all",
+  workspaceAccountingEnabling,
+  workspaceDefaultCurrencySaving,
+  canManageFinanceMembers,
+  canBootstrapManageFinanceMembers,
+  pushToast,
+  loadFinanceContext,
+  loadRealFinanceState,
+  loadRealWarehouseState,
+  loadWorkspaceSettings,
+  loadFinanceMembers,
+  setWorkspaceAccountingEnabling,
+  setWorkspaceDefaultCurrencySaving,
+  setInvitingAccountant,
+  setSavingFinanceMemberId,
+  setFinanceMembers
+}) {
+  const enableWorkspaceAccounting = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse || workspaceAccountingEnabling) {
+      return null;
+    }
+
+    setWorkspaceAccountingEnabling(true);
+    try {
+      const payload = await api.enableWorkspaceAccounting(tokenToUse, workspaceIdToUse);
+      await Promise.all([
+        loadFinanceContext(tokenToUse, workspaceIdToUse),
+        loadWorkspaceSettings(tokenToUse, workspaceIdToUse),
+        loadRealFinanceState(tokenToUse, { accountingPeriod: financeAccountingPeriod, toastOnSuccess: false }, workspaceIdToUse)
+      ]);
+      pushToast({
+        title: "Accounting enabled",
+        body: "The accounting module is now active for this workspace and the default chart has been prepared."
+      });
+      return payload;
+    } catch (error) {
+      pushToast({
+        title: "Enable accounting failed",
+        body: error.message || "Unable to enable accounting for this workspace."
+      });
+      return null;
+    } finally {
+      setWorkspaceAccountingEnabling(false);
+    }
+  }, [
+    activeWorkspaceId,
+    authToken,
+    financeAccountingPeriod,
+    loadFinanceContext,
+    loadRealFinanceState,
+    loadWorkspaceSettings,
+    pushToast,
+    realWorkspaceEnabled,
+    workspaceAccountingEnabling
+  ]);
+
+  const updateWorkspaceDefaultCurrency = useCallback(async (currency, tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse || workspaceDefaultCurrencySaving) {
+      return null;
+    }
+
+    setWorkspaceDefaultCurrencySaving(true);
+    try {
+      const payload = await api.updateWorkspaceDefaultCurrency(tokenToUse, currency, workspaceIdToUse);
+      await Promise.all([
+        loadFinanceContext(tokenToUse, workspaceIdToUse),
+        loadWorkspaceSettings(tokenToUse, workspaceIdToUse),
+        loadRealFinanceState(tokenToUse, { accountingPeriod: financeAccountingPeriod, toastOnSuccess: false }, workspaceIdToUse),
+        loadRealWarehouseState(tokenToUse, { toastOnSuccess: false }, workspaceIdToUse)
+      ]);
+      pushToast({
+        title: "Default currency updated",
+        body: `${payload?.workspace?.defaultCurrency || normalizeCurrencyCode(currency)} is now the workspace default currency.`
+      });
+      return payload;
+    } catch (error) {
+      pushToast({
+        title: "Default currency update failed",
+        body: error.message || "Unable to update the workspace default currency."
+      });
+      return null;
+    } finally {
+      setWorkspaceDefaultCurrencySaving(false);
+    }
+  }, [
+    activeWorkspaceId,
+    authToken,
+    financeAccountingPeriod,
+    loadFinanceContext,
+    loadRealFinanceState,
+    loadRealWarehouseState,
+    loadWorkspaceSettings,
+    pushToast,
+    realWorkspaceEnabled,
+    workspaceDefaultCurrencySaving
+  ]);
+
+  const handleInviteAccountant = useCallback(async (payload) => {
+    if (!authToken || !activeWorkspaceId || !realWorkspaceEnabled) {
+      return null;
+    }
+
+    setInvitingAccountant(true);
+    try {
+      const member = await api.inviteWorkspaceAccountant(authToken, activeWorkspaceId, payload);
+      await Promise.all([
+        loadWorkspaceSettings(authToken, activeWorkspaceId),
+        loadFinanceMembers(authToken)
+      ]);
+      pushToast({
+        title: "Accountant invited",
+        body: `${member?.email || payload.email} now has accountant access for this workspace.`
+      });
+      return member;
+    } catch (error) {
+      pushToast({
+        title: "Unable to invite accountant",
+        body: error.message || "Please try again."
+      });
+      return null;
+    } finally {
+      setInvitingAccountant(false);
+    }
+  }, [activeWorkspaceId, authToken, loadFinanceMembers, loadWorkspaceSettings, pushToast, realWorkspaceEnabled]);
+
+  async function handleToggleFinanceMemberRole(member, roleId) {
+    if (!authToken || !canManageFinanceMembers) {
+      return;
+    }
+
+    const currentRoles = Array.isArray(member.workspaceRoles) ? member.workspaceRoles : [];
+    const nextRoles = currentRoles.includes(roleId)
+      ? currentRoles.filter((role) => role !== roleId)
+      : [...currentRoles, roleId];
+
+    setSavingFinanceMemberId(member.id);
+    try {
+      const updated = await api.updateFinanceMemberRoles(authToken, member.id, nextRoles, activeWorkspaceId);
+      setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? updated : entry)));
+      pushToast({
+        title: "Finance access updated",
+        body: `${updated.name} now has ${updated.workspaceRoles.length ? updated.workspaceRoles.join(", ").replaceAll("_", " ") : "no finance"} access.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to update finance access",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setSavingFinanceMemberId(null);
+    }
+  }
+
+  async function handleUpdateFinanceMemberAccess(member, updates) {
+    if (!authToken || !canBootstrapManageFinanceMembers) {
+      return;
+    }
+
+    setSavingFinanceMemberId(member.id);
+    try {
+      const updated = await api.updateWorkspaceMemberAccess(authToken, member.id, updates, activeWorkspaceId);
+      setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? updated : entry)));
+      pushToast({
+        title: "Workspace access updated",
+        body: `${updated.name} now has ${updated.workspaceEnabled ? "workspace access" : "workspace access disabled"}${updated.workspaceRole ? ` as ${updated.workspaceRole}` : ""}.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to update workspace access",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setSavingFinanceMemberId(null);
+    }
+  }
+
+  return {
+    enableWorkspaceAccounting,
+    updateWorkspaceDefaultCurrency,
+    handleInviteAccountant,
+    handleToggleFinanceMemberRole,
+    handleUpdateFinanceMemberAccess
+  };
+}
+
+// ----- WorkspaceMessenger.jsx -----
 const WORKSPACE_TASK_EVENT_KEY = "messenger-mvp-workspace-task-event";
 
 function buildMockWorkspaceState(userRole, currentUserOverride = null) {
@@ -453,10 +18822,6 @@ function buildLinkedWorkTitle(message, fallback = "Follow up") {
   return base.length > 72 ? `${base.slice(0, 69).trimEnd()}...` : base;
 }
 
-function buildLinkedWorkExcerpt(message) {
-  return String(message?.content || "").trim().replace(/\s+/g, " ").slice(0, 400);
-}
-
 function buildTaskPayloadFromMessage(message, thread) {
   const excerpt = buildLinkedWorkExcerpt(message);
   const threadName = thread?.linkedUserName || thread?.name || "Workspace thread";
@@ -560,7 +18925,7 @@ function upsertWorkspaceConversationThread(current, conversation) {
   };
 }
 
-export function WorkspaceMessenger({
+function WorkspaceMessenger({
   userRole = "manager",
   initialNav = "inbox",
   initialThreadId = null,
@@ -644,6 +19009,7 @@ export function WorkspaceMessenger({
   const [financeMembers, setFinanceMembers] = useState([]);
   const [financeMembersLoading, setFinanceMembersLoading] = useState(false);
   const [savingFinanceMemberId, setSavingFinanceMemberId] = useState(null);
+  const [downloadingInvoicePdfId, setDownloadingInvoicePdfId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [reactions, setReactions] = useState({});
   const [activePicker, setActivePicker] = useState(null);
@@ -913,7 +19279,6 @@ export function WorkspaceMessenger({
     canManageFinanceMembers,
     realFinanceEnabled,
     pushToast,
-    normalizePlatformWorkspaceMember,
     applyRealWorkspaceConversations,
     setWorkspaceSettings,
     setWorkspaceSettingsLoading,
@@ -930,6 +19295,35 @@ export function WorkspaceMessenger({
     setWorkspaceState,
     setFinanceActivity
   });
+
+  const loadWorkspaceOverview = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId, options = {}) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse) {
+      setOverviewPressure(null);
+      return null;
+    }
+
+    const requestId = overviewRequestIdRef.current + 1;
+    overviewRequestIdRef.current = requestId;
+
+    try {
+      const overview = await api.getWorkspaceOverview(tokenToUse, workspaceIdToUse);
+      if (requestId !== overviewRequestIdRef.current) {
+        return null;
+      }
+      setOverviewPressure(overview);
+      return overview;
+    } catch (error) {
+      if (options.toastOnError) {
+        pushToast({
+          title: "Overview unavailable",
+          body: error.message || "Unable to load workspace pressure right now.",
+          dedupeKey: "workspace-overview-unavailable",
+          cooldownMs: 20000
+        });
+      }
+      return null;
+    }
+  }, [activeWorkspaceId, authToken, pushToast, realWorkspaceEnabled]);
 
   const loadRealFinanceState = useCallback(async (tokenToUse = authToken, options = {}, workspaceIdOverride = activeWorkspaceId) => {
     if (!tokenToUse || !realFinanceEnabled) {
@@ -1378,35 +19772,6 @@ export function WorkspaceMessenger({
     }
   }, [activeWorkspaceId, authToken, loadWorkspaceOverview, pushToast, realWorkspaceEnabled]);
 
-  const loadWorkspaceOverview = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId, options = {}) => {
-    if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse) {
-      setOverviewPressure(null);
-      return null;
-    }
-
-    const requestId = overviewRequestIdRef.current + 1;
-    overviewRequestIdRef.current = requestId;
-
-    try {
-      const overview = await api.getWorkspaceOverview(tokenToUse, workspaceIdToUse);
-      if (requestId !== overviewRequestIdRef.current) {
-        return null;
-      }
-      setOverviewPressure(overview);
-      return overview;
-    } catch (error) {
-      if (options.toastOnError) {
-        pushToast({
-          title: "Overview unavailable",
-          body: error.message || "Unable to load workspace pressure right now.",
-          dedupeKey: "workspace-overview-unavailable",
-          cooldownMs: 20000
-        });
-      }
-      return null;
-    }
-  }, [activeWorkspaceId, authToken, pushToast, realWorkspaceEnabled]);
-
   const loadWorkspaceNotifications = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId, options = {}) => {
     if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse) {
       setWorkspaceNotifications([]);
@@ -1492,6 +19857,7 @@ export function WorkspaceMessenger({
     authToken,
     activeWorkspaceId,
     realWorkspaceEnabled,
+    financeAccountingPeriod: financeAccountingPeriodRef.current || "all",
     workspaceAccountingEnabling,
     workspaceDefaultCurrencySaving,
     canManageFinanceMembers,
@@ -2828,6 +21194,11 @@ export function WorkspaceMessenger({
                   onCreateExpense={createExpenseEntry}
                   onLoadWarehouseProductMovementReview={realWarehouseEnabled ? loadWarehouseProductMovementReview : null}
                   onLoadWarehouseOrderReview={realWarehouseEnabled ? loadWarehouseOrderReview : null}
+                  onCreateWarehouseProductEntry={createWarehouseProductEntry}
+                  onSavePurchaseOrder={handleSavePurchaseOrder}
+                  onSendPurchaseOrder={handleSendPurchaseOrder}
+                  onReceivePurchaseOrder={handleReceivePurchaseOrder}
+                  onCancelPurchaseOrder={handleCancelPurchaseOrder}
                   financeCustomers={financeCustomers}
                   financeVendors={financeVendors}
                   customerSuggestions={financeCustomerSuggestions}
@@ -2841,6 +21212,7 @@ export function WorkspaceMessenger({
                   financeWorkspaces={financeWorkspaces}
                   financeWorkspacesLoading={financeWorkspacesLoading}
                   financeSummary={financeSummary}
+                  financeAccountingState={financeAccountingState}
                   financeFxRates={financeFxRates}
                   financeTaxSummary={financeTaxSummary}
                   financeProfitLossReport={financeProfitLossReport}
@@ -2852,6 +21224,8 @@ export function WorkspaceMessenger({
                   financeBankAccounts={financeBankAccounts}
                   financeBankTransactions={financeBankTransactions}
                   warehouseSummary={warehouseSummary}
+                  warehouseAlerts={warehouseAlerts}
+                  warehousePurchaseOrders={warehousePurchaseOrders}
                   warehouseInventoryValueReport={warehouseInventoryValueReport}
                   executionSummary={executionSummary}
                   overviewPressure={overviewPressure}
@@ -2940,6 +21314,7 @@ export function WorkspaceMessenger({
                   markingAllWorkspaceNotificationsRead={markingAllWorkspaceNotificationsRead}
                   onInviteAccountant={handleInviteAccountant}
                   invitingAccountant={invitingAccountant}
+                  setFinanceAccountingState={setFinanceAccountingState}
                   handlers={{
                     onApproveInvoice: handleApproveInvoice,
                     onStartRejectInvoice: handleStartRejectInvoice,
@@ -2977,3 +21352,6 @@ export function WorkspaceMessenger({
     </ThreadListContext.Provider>
   );
 }
+
+export { WorkspaceMessenger };
+export default WorkspaceMessenger;

@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 import { api } from "./api";
@@ -15,6 +15,7 @@ import { PROJECT_MANAGER_STORAGE_KEY, ProjectManagerWindow } from "./components/
 import { RamadanWindow } from "./components/RamadanWindow";
 import { TaskManagerWindow } from "./components/TaskManagerWindow";
 import { Toasts } from "./components/Toasts";
+import { WorkspaceMessenger } from "./components/WorkspaceMessenger";
 import { useHistoryBackLayer } from "./useHistoryBackLayer";
 import {
   filterInboxGroupMessages,
@@ -24,7 +25,7 @@ import {
   writeStoredInboxGroups
 } from "./inbox-group-utils";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5001";
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://127.0.0.1:5001";
 const STORAGE_KEY = "messenger-mvp-auth";
 const THEME_KEY = "messenger-mvp-theme";
 const WORKSPACE_DEMO_EXITED_KEY = "messenger-mvp-workspace-demo-exited";
@@ -34,12 +35,6 @@ const PAGE_SIZE = 20;
 const COMPACT_RAIL_BREAKPOINT = 1080;
 const HIDDEN_RAIL_BREAKPOINT = 920;
 const APP_HISTORY_KEY = "__witchAppView";
-const WorkspaceMessenger = lazy(() =>
-  import("./components/WorkspaceMessenger").then((module) => ({
-    default: module.WorkspaceMessenger
-  }))
-);
-
 function normalizeShellSidebarSection(section) {
   return section === "workspace" ? "inbox" : section || "inbox";
 }
@@ -3939,6 +3934,25 @@ export default function App() {
     });
   }, [authState?.token, notificationPermission]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const authScrollView = authBootstrapping || !authState?.token || !authState?.user;
+    const root = document.getElementById("root");
+
+    document.documentElement.classList.toggle("auth-scroll-view", authScrollView);
+    document.body.classList.toggle("auth-scroll-view", authScrollView);
+    root?.classList.toggle("auth-scroll-view", authScrollView);
+
+    return () => {
+      document.documentElement.classList.remove("auth-scroll-view");
+      document.body.classList.remove("auth-scroll-view");
+      root?.classList.remove("auth-scroll-view");
+    };
+  }, [authBootstrapping, authState?.token, authState?.user]);
+
   if (authBootstrapping) {
     return (
       <>
@@ -3977,7 +3991,7 @@ export default function App() {
     <>
       <main className="app-shell">
         <div
-          className={`app-frame ${activeContact ? "mobile-chat-open" : ""} ${effectiveRailCollapsed ? "rail-collapsed" : ""} ${isWorkspacePanelOpen ? "workspace-panel-open" : ""} ${isCompactRail ? "compact-rail-mode" : ""} ${isHiddenRail ? "hidden-rail-mode" : ""} ${isConversationDrawerOpen ? "conversation-drawer-open" : ""}`}
+          className={`app-frame ${activeContact ? "mobile-chat-open" : ""} ${effectiveRailCollapsed ? "rail-collapsed" : ""} ${isWorkspacePanelOpen ? "workspace-panel-open" : ""} ${isCompactRail ? "compact-rail-mode" : ""} ${isHiddenRail ? "hidden-rail-mode" : ""} ${isConversationDrawerOpen ? "conversation-drawer-open" : ""} ${showDockedActionPanel && actionPanelDock ? "action-panel-expanded" : ""}`}
         >
           <button
             className={`workspace-panel-backdrop ${isWorkspacePanelOpen ? "is-visible" : ""}`}

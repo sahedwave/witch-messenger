@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://localhost:5001/api" : "");
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? "http://127.0.0.1:5001/api" : "");
 const API_ORIGIN = API_URL ? new URL(API_URL, window.location.origin).origin : "";
 
 export function resolveApiAssetUrl(assetPath = "") {

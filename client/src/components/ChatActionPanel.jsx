@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar } from "./Avatar";
 import { CalendarFlyout } from "./CalendarFlyout";
@@ -146,6 +146,7 @@ export function ChatActionPanel({
   onToggleMute,
   onTogglePin
 }) {
+  const panelRef = useRef(null);
   const [internalActiveDock, setInternalActiveDock] = useState(null);
   const [showMore, setShowMore] = useState(false);
   const activeDock = controlledActiveDock ?? internalActiveDock;
@@ -167,6 +168,137 @@ export function ChatActionPanel({
     setInternalActiveDock(resolvedValue);
     onActiveDockChange(resolvedValue);
   }
+
+  useEffect(() => {
+    if (isOverlay || (!activeDock && !showMore)) {
+      return undefined;
+    }
+
+    function handlePointerDown(event) {
+      if (!panelRef.current?.contains(event.target)) {
+        setShowMore(false);
+        updateActiveDock(null);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [activeDock, isOverlay, showMore]);
+
+  const activeDockPanel =
+    activeDock === "calendar" ? (
+      <CalendarFlyout
+        activeContact={activeContact}
+        events={calendarEvents}
+        focusEventId={calendarFocusEventId}
+        messages={messages}
+        onEventsChange={onCalendarEventsChange}
+        onFocusHandled={onCalendarFocusHandled}
+      />
+    ) : activeDock === "pdfReview" ? (
+      <PdfReviewFlyout
+        activeContact={activeContact}
+        currentUserId={currentUserId}
+        sessions={pdfReviewSessions}
+        onCreateSession={onCreatePdfReviewSession}
+        onRespondSession={onRespondPdfReviewSession}
+        onUpdateSession={onUpdatePdfReviewSession}
+      />
+    ) : activeDock === "invoice" ? (
+      <InvoiceFlyout
+        activeContact={activeContact}
+        documents={invoiceDocuments}
+        onDeleteDocument={onDeleteInvoiceDocument}
+        onSaveDocument={onSaveInvoiceDocument}
+        onUpdateStatus={onUpdateInvoiceStatus}
+      />
+    ) : activeDock === "memoryCapsule" ? (
+      <MemoryCapsuleFlyout
+        activeContact={activeContact}
+        capsules={memoryCapsules}
+        currentUserId={currentUserId}
+        onDeleteCapsule={onDeleteMemoryCapsule}
+        onOpenCapsule={onOpenMemoryCapsule}
+        onReactCapsule={onReactMemoryCapsule}
+        onReplyCapsule={onReplyMemoryCapsule}
+        onSaveCapsule={onSaveMemoryCapsule}
+      />
+    ) : null;
+
+  const morePanel =
+    showMore && activeContact ? (
+      <section className={`chat-action-card compact secondary rail-flyout ${isOverlay ? "is-overlay-dropdown" : ""}`}>
+        <div className="chat-action-flyout-head">
+          <span className="avatar-shell">
+            <Avatar user={activeContact} size="large" />
+            <span
+              className={`avatar-status avatar-status-${
+                activeContact.presenceStatus === "online"
+                  ? "online"
+                  : activeContact.presenceStatus === "away"
+                    ? "away"
+                    : "offline"
+              }`}
+              aria-hidden="true"
+            />
+          </span>
+          <div className="chat-action-mini-meta">
+            <strong>{activeContact.displayName || activeContact.name}</strong>
+            <span className="chat-action-mini-status">{summaryText}</span>
+          </div>
+        </div>
+        <div className="chat-action-grid compact">
+          {actionItems.map((item) => {
+            const active =
+              item.id === "favorite"
+                ? Boolean(activeContact.isFavorite)
+                : item.id === "pin"
+                  ? Boolean(activeContact.isPinned)
+                  : item.id === "mute"
+                    ? Boolean(activeContact.isMuted)
+                    : item.id === "archive"
+                      ? Boolean(activeContact.isArchived)
+                      : item.id === "restrict"
+                        ? Boolean(activeContact.isRestricted)
+                        : item.id === "block"
+                          ? Boolean(activeContact.isBlocked)
+                          : false;
+
+            const onClick =
+              item.id === "favorite"
+                ? onToggleFavorite
+                : item.id === "labels"
+                  ? onSetLabels
+                  : item.id === "pin"
+                    ? onTogglePin
+                    : item.id === "mute"
+                      ? onToggleMute
+                      : item.id === "nickname"
+                        ? onSetNickname
+                        : item.id === "export"
+                          ? onExportConversation
+                          : item.id === "archive"
+                            ? onArchive
+                            : item.id === "restrict"
+                              ? onRestrict
+                              : onToggleBlock;
+
+            return (
+              <ActionButton
+                key={item.id}
+                active={active}
+                glyph={item.glyph}
+                label={item.label}
+                onClick={onClick}
+                tone={item.tone}
+              />
+            );
+          })}
+        </div>
+      </section>
+    ) : null;
 
   const panelContent = (
     <>
@@ -219,135 +351,14 @@ export function ChatActionPanel({
             +
           </button>
         </section>
-
-        {showMore && activeContact ? (
-          <section className={`chat-action-card compact secondary rail-flyout ${isOverlay ? "is-overlay-dropdown" : ""}`}>
-            <div className="chat-action-flyout-head">
-              <span className="avatar-shell">
-                <Avatar user={activeContact} size="large" />
-                <span
-                  className={`avatar-status avatar-status-${
-                    activeContact.presenceStatus === "online"
-                      ? "online"
-                      : activeContact.presenceStatus === "away"
-                        ? "away"
-                        : "offline"
-                  }`}
-                  aria-hidden="true"
-                />
-              </span>
-              <div className="chat-action-mini-meta">
-                <strong>{activeContact.displayName || activeContact.name}</strong>
-                <span className="chat-action-mini-status">{summaryText}</span>
-              </div>
-            </div>
-            <div className="chat-action-grid compact">
-              {actionItems.map((item) => {
-                const active =
-                  item.id === "favorite"
-                    ? Boolean(activeContact.isFavorite)
-                    : item.id === "pin"
-                      ? Boolean(activeContact.isPinned)
-                      : item.id === "mute"
-                        ? Boolean(activeContact.isMuted)
-                        : item.id === "archive"
-                          ? Boolean(activeContact.isArchived)
-                          : item.id === "restrict"
-                            ? Boolean(activeContact.isRestricted)
-                            : item.id === "block"
-                              ? Boolean(activeContact.isBlocked)
-                              : false;
-
-                const onClick =
-                  item.id === "favorite"
-                    ? onToggleFavorite
-                    : item.id === "labels"
-                      ? onSetLabels
-                      : item.id === "pin"
-                        ? onTogglePin
-                        : item.id === "mute"
-                          ? onToggleMute
-                          : item.id === "nickname"
-                            ? onSetNickname
-                            : item.id === "export"
-                              ? onExportConversation
-                              : item.id === "archive"
-                                ? onArchive
-                                : item.id === "restrict"
-                                  ? onRestrict
-                                  : onToggleBlock;
-
-                return (
-                  <ActionButton
-                    key={item.id}
-                    active={active}
-                    glyph={item.glyph}
-                    label={item.label}
-                    onClick={onClick}
-                    tone={item.tone}
-                  />
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
+        {isOverlay ? morePanel : null}
       </div>
 
-      {activeDock === "calendar" ? (
-        <CalendarFlyout
-          activeContact={activeContact}
-          events={calendarEvents}
-          focusEventId={calendarFocusEventId}
-          messages={messages}
-          onEventsChange={onCalendarEventsChange}
-          onFocusHandled={onCalendarFocusHandled}
-        />
+      {activeDockPanel ? (
+        <div className={isOverlay ? "" : "chat-action-active-flyout"}>{activeDockPanel}</div>
       ) : null}
-
-      {activeDock === "pdfReview" ? (
-        <PdfReviewFlyout
-          activeContact={activeContact}
-          currentUserId={currentUserId}
-          sessions={pdfReviewSessions}
-          onCreateSession={onCreatePdfReviewSession}
-          onRespondSession={onRespondPdfReviewSession}
-          onUpdateSession={onUpdatePdfReviewSession}
-        />
-      ) : null}
-
-      {activeDock === "invoice" ? (
-        <InvoiceFlyout
-          activeContact={activeContact}
-          documents={invoiceDocuments}
-          onDeleteDocument={onDeleteInvoiceDocument}
-          onSaveDocument={onSaveInvoiceDocument}
-          onUpdateStatus={onUpdateInvoiceStatus}
-        />
-      ) : null}
-
-      {activeDock === "memoryCapsule" ? (
-        <MemoryCapsuleFlyout
-          activeContact={activeContact}
-          capsules={memoryCapsules}
-          currentUserId={currentUserId}
-          onDeleteCapsule={onDeleteMemoryCapsule}
-          onOpenCapsule={onOpenMemoryCapsule}
-          onReactCapsule={onReactMemoryCapsule}
-          onReplyCapsule={onReplyMemoryCapsule}
-          onSaveCapsule={onSaveMemoryCapsule}
-        />
-      ) : null}
-
-      {!activeContact && !activeDock ? (
-        <aside className="chat-action-panel-empty-shell">
-          <div className="chat-action-empty">
-            <div className="chat-action-empty-icon" aria-hidden="true">
-              •••
-            </div>
-            <strong>Conversation actions</strong>
-            <p>Select a chat to manage labels, export, or moderation settings.</p>
-          </div>
-        </aside>
+      {morePanel && !isOverlay ? (
+        <div className="chat-action-active-flyout is-more-panel">{morePanel}</div>
       ) : null}
 
     </>
@@ -362,5 +373,5 @@ export function ChatActionPanel({
     );
   }
 
-  return <aside className="chat-action-panel">{panelContent}</aside>;
+  return <aside ref={panelRef} className={`chat-action-panel ${activeDock || showMore ? "has-active-dock" : ""}`}>{panelContent}</aside>;
 }

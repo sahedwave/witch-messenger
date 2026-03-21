@@ -67,6 +67,30 @@ body {
   overflow: hidden;
 }
 
+html.standalone-scroll-view,
+body.standalone-scroll-view,
+#root.standalone-scroll-view {
+  height: auto;
+  min-height: 100%;
+}
+
+html.auth-scroll-view,
+body.auth-scroll-view,
+#root.auth-scroll-view {
+  height: auto;
+  min-height: 100%;
+}
+
+body.standalone-scroll-view {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+body.auth-scroll-view {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 button,
 input {
   font: inherit;
@@ -245,6 +269,12 @@ a {
   height: auto;
   overflow-x: hidden;
   overflow-y: auto;
+}
+
+body.auth-scroll-view .auth-shell {
+  place-items: start center;
+  overflow: visible;
+  padding-block: 16px 32px;
 }
 
 .app-frame,

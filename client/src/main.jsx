@@ -2,15 +2,10 @@ import React, { Suspense, lazy } from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import { WorkspaceMessenger } from "./components/WorkspaceMessenger";
 import "./monitoring";
 import "./index.css";
 import "./styles/workspace-ui.css";
-
-const WorkspaceMessenger = lazy(() =>
-  import("./components/WorkspaceMessenger").then((module) => ({
-    default: module.WorkspaceMessenger
-  }))
-);
 const GhostingRoute = lazy(() =>
   import("./components/GhostingRoute").then((module) => ({
     default: module.GhostingRoute
@@ -20,9 +15,16 @@ const GhostingRoute = lazy(() =>
 const params = new URLSearchParams(window.location.search);
 const businessView = params.get("view") === "workspace-messenger";
 const ghostingView = params.get("view") === "ghosting";
+const standaloneScrollView = ["tasks", "projects", "ramadan", "quran"].includes(params.get("view") || "");
 const businessRole = params.get("userRole") || "manager";
 const businessNav = params.get("nav") || "inbox";
 const businessThread = params.get("thread") || null;
+
+if (typeof document !== "undefined") {
+  document.documentElement.classList.toggle("standalone-scroll-view", standaloneScrollView);
+  document.body.classList.toggle("standalone-scroll-view", standaloneScrollView);
+  document.getElementById("root")?.classList.toggle("standalone-scroll-view", standaloneScrollView);
+}
 
 class AppErrorBoundary extends React.Component {
   constructor(props) {
