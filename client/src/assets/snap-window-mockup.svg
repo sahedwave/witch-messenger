@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 860" width="400" height="860">
+  <defs>
+    <radialGradient id="bgMain" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" style="stop-color:#1a0535" />
+      <stop offset="40%" style="stop-color:#080414" />
+      <stop offset="100%" style="stop-color:#000d1a" />
+    </radialGradient>
+    <radialGradient id="nebulaTop" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ff6fd8;stop-opacity:0.18" />
+      <stop offset="100%" style="stop-color:#ff6fd8;stop-opacity:0" />
+    </radialGradient>
+    <radialGradient id="nebulaBottom" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#00c8ff;stop-opacity:0.12" />
+      <stop offset="100%" style="stop-color:#00c8ff;stop-opacity:0" />
+    </radialGradient>
+    <radialGradient id="nebulaMid" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#c84bff;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#c84bff;stop-opacity:0" />
+    </radialGradient>
+    <linearGradient id="pinkPurple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6fd8" />
+      <stop offset="100%" style="stop-color:#c84bff" />
+    </linearGradient>
+    <linearGradient id="cyanPink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f5ff" />
+      <stop offset="100%" style="stop-color:#ff6fd8" />
+    </linearGradient>
+    <linearGradient id="goldPink" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ffbe00" />
+      <stop offset="100%" style="stop-color:#ff6fd8" />
+    </linearGradient>
+    <linearGradient id="blobBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff6fd8" />
+      <stop offset="33%" style="stop-color:#c84bff" />
+      <stop offset="66%" style="stop-color:#00c8ff" />
+      <stop offset="100%" style="stop-color:#ffbe00" />
+    </linearGradient>
+    <radialGradient id="orbRadial" cx="40%" cy="35%" r="65%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="35%" style="stop-color:#ff9fe8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7b00ff;stop-opacity:1" />
+    </radialGradient>
+    <radialGradient id="orbGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ff6fd8;stop-opacity:0.6" />
+      <stop offset="100%" style="stop-color:#ff6fd8;stop-opacity:0" />
+    </radialGradient>
+    <radialGradient id="capturePulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#ff6fd8;stop-opacity:0.3" />
+      <stop offset="70%" style="stop-color:#c84bff;stop-opacity:0.1" />
+      <stop offset="100%" style="stop-color:#c84bff;stop-opacity:0" />
+    </radialGradient>
+    <linearGradient id="filterWheel" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0d0520;stop-opacity:0" />
+      <stop offset="15%" style="stop-color:#0d0520;stop-opacity:1" />
+      <stop offset="85%" style="stop-color:#0d0520;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d0520;stop-opacity:0" />
+    </linearGradient>
+    <linearGradient id="glassPanel" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:rgba(255,255,255,0.07)" />
+      <stop offset="100%" style="stop-color:rgba(255,255,255,0.02)" />
+    </linearGradient>
+    <linearGradient id="sendGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#ff6fd8" />
+      <stop offset="50%" style="stop-color:#c84bff" />
+      <stop offset="100%" style="stop-color:#7b2fff" />
+    </linearGradient>
+    <linearGradient id="streakGem" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00f5ff" />
+      <stop offset="50%" style="stop-color:#c84bff" />
+      <stop offset="100%" style="stop-color:#ff6fd8" />
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+      <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="bigGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur" />
+      <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="modalShadow">
+      <feDropShadow dx="0" dy="30" stdDeviation="40" flood-color="#000000" flood-opacity="0.8" />
+      <feDropShadow dx="0" dy="0" stdDeviation="20" flood-color="#ff6fd8" flood-opacity="0.08" />
+    </filter>
+    <filter id="neonText">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+      <feMerge><feMergeNode in="coloredBlur" /><feMergeNode in="coloredBlur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <rect width="400" height="860" fill="url(#bgMain)" />
+  <ellipse cx="100" cy="150" rx="180" ry="140" fill="url(#nebulaTop)" />
+  <ellipse cx="320" cy="500" rx="150" ry="130" fill="url(#nebulaMid)" />
+  <ellipse cx="80" cy="720" rx="160" ry="120" fill="url(#nebulaBottom)" />
+  <circle cx="45" cy="60" r="1" fill="white" opacity="0.6" />
+  <circle cx="370" cy="40" r="1.5" fill="white" opacity="0.5" />
+  <circle cx="15" cy="300" r="1" fill="#ff6fd8" opacity="0.7" />
+  <circle cx="385" cy="250" r="1" fill="#00f5ff" opacity="0.6" />
+  <circle cx="30" cy="600" r="1.5" fill="white" opacity="0.4" />
+  <circle cx="375" cy="700" r="1" fill="#c84bff" opacity="0.7" />
+  <circle cx="60" cy="800" r="1" fill="white" opacity="0.3" />
+  <circle cx="355" cy="820" r="1.5" fill="#ffbe00" opacity="0.5" />
+  <rect x="16" y="16" width="368" height="828" rx="36" fill="url(#glassPanel)" stroke="url(#blobBorder)" stroke-width="1.2" filter="url(#modalShadow)" opacity="0.98" />
+  <rect x="16" y="16" width="368" height="1.5" rx="1" fill="rgba(255,255,255,0.15)" />
+  <rect x="16" y="16" width="1.5" height="828" rx="1" fill="rgba(255,255,255,0.06)" />
+  <circle cx="52" cy="62" r="22" fill="url(#goldPink)" opacity="0.2" filter="url(#bigGlow)" />
+  <rect x="34" y="44" width="36" height="36" rx="12" fill="url(#goldPink)" filter="url(#glow)" />
+  <text x="52" y="68" text-anchor="middle" font-size="20">🧙</text>
+  <text x="82" y="67" font-family="'Sora',Georgia,sans-serif" font-size="17" font-weight="800" fill="white" filter="url(#neonText)" letter-spacing="-0.5">Ghosting</text>
+  <circle cx="362" cy="62" r="16" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+  <text x="362" y="68" text-anchor="middle" font-size="13" fill="rgba(255,255,255,0.6)">✕</text>
+  <ellipse cx="200" cy="340" rx="165" ry="200" fill="none" stroke="url(#blobBorder)" stroke-width="0.8" opacity="0.2" filter="url(#bigGlow)" />
+  <ellipse cx="200" cy="340" rx="158" ry="193" fill="none" stroke="url(#pinkPurple)" stroke-width="0.5" opacity="0.15" />
+  <path d="M60,170 Q62,148 85,142 Q120,132 160,136 Q180,134 200,134 Q220,134 240,136 Q280,132 315,142 Q338,148 340,170 Q348,210 346,270 Q348,330 344,390 Q342,430 338,460 Q330,500 316,516 Q290,534 260,538 Q240,542 220,544 Q210,548 200,560 Q190,548 180,544 Q160,542 140,538 Q110,534 84,516 Q70,500 62,460 Q56,430 54,390 Q50,330 52,270 Q50,210 60,170 Z" fill="rgba(8,4,20,0.95)" stroke="url(#blobBorder)" stroke-width="1.5" filter="url(#glow)" />
+  <path d="M68,175 Q70,155 90,150 Q125,141 165,145 Q182,143 200,143 Q218,143 235,145 Q275,141 310,150 Q330,155 332,175 Q339,213 337,268 Q339,327 335,384 Q333,422 329,450 Q322,487 310,502 Q286,518 258,522 Q238,526 220,528 Q210,532 200,543 Q190,532 180,528 Q162,526 142,522 Q114,518 90,502 Q78,487 71,450 Q63,422 63,384 Q59,327 61,268 Q59,213 68,175 Z" fill="rgba(5,3,14,0.98)" />
+  <line x1="68" y1="282" x2="332" y2="282" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+  <line x1="68" y1="412" x2="332" y2="412" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+  <line x1="134" y1="143" x2="134" y2="543" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+  <line x1="200" y1="143" x2="200" y2="543" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+  <line x1="266" y1="143" x2="266" y2="543" stroke="rgba(255,255,255,0.03)" stroke-width="1" />
+  <ellipse cx="200" cy="250" rx="80" ry="60" fill="#ff6fd8" opacity="0.03" />
+  <ellipse cx="200" cy="420" rx="60" ry="40" fill="#00c8ff" opacity="0.03" />
+  <ellipse cx="200" cy="260" rx="42" ry="48" fill="rgba(255,111,216,0.06)" stroke="rgba(255,111,216,0.12)" stroke-width="1" />
+  <path d="M158,340 Q160,310 200,305 Q240,310 242,340 Q250,380 248,430 Q220,440 200,440 Q180,440 152,430 Q150,380 158,340 Z" fill="rgba(255,111,216,0.04)" stroke="rgba(255,111,216,0.08)" stroke-width="1" />
+  <ellipse cx="188" cy="256" rx="5" ry="6" fill="rgba(255,255,255,0.08)" />
+  <ellipse cx="212" cy="256" rx="5" ry="6" fill="rgba(255,255,255,0.08)" />
+  <path d="M190,278 Q200,286 210,278" stroke="rgba(255,255,255,0.1)" stroke-width="1.5" fill="none" stroke-linecap="round" />
+  <path d="M90,185 L72,185 L72,205" stroke="#ff6fd8" stroke-width="2" fill="none" stroke-linecap="round" filter="url(#glow)" opacity="0.8" />
+  <path d="M310,185 L328,185 L328,205" stroke="#ff6fd8" stroke-width="2" fill="none" stroke-linecap="round" filter="url(#glow)" opacity="0.8" />
+  <path d="M90,495 L72,495 L72,475" stroke="#00f5ff" stroke-width="2" fill="none" stroke-linecap="round" filter="url(#glow)" opacity="0.8" />
+  <path d="M310,495 L328,495 L328,475" stroke="#00f5ff" stroke-width="2" fill="none" stroke-linecap="round" filter="url(#glow)" opacity="0.8" />
+  <circle cx="200" cy="748" r="70" fill="url(#capturePulse)" opacity="0.4" />
+  <circle cx="200" cy="748" r="58" fill="none" stroke="rgba(255,111,216,0.12)" stroke-width="1.5" />
+  <circle cx="200" cy="748" r="50" fill="none" stroke="rgba(200,75,255,0.18)" stroke-width="1" />
+  <circle cx="200" cy="748" r="44" fill="none" stroke="url(#blobBorder)" stroke-width="2" opacity="0.5" filter="url(#glow)" />
+  <circle cx="200" cy="748" r="38" fill="url(#orbGlow)" filter="url(#bigGlow)" />
+  <circle cx="200" cy="748" r="36" fill="url(#orbRadial)" filter="url(#glow)" />
+  <ellipse cx="192" cy="738" rx="12" ry="8" fill="rgba(255,255,255,0.35)" />
+  <ellipse cx="190" cy="736" rx="6" ry="4" fill="rgba(255,255,255,0.5)" />
+  <circle cx="200" cy="748" r="28" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" />
+  <text x="200" y="700" text-anchor="middle" font-family="'Sora',sans-serif" font-size="8" fill="rgba(255,255,255,0.25)" letter-spacing="1">TAP TO CAPTURE</text>
+</svg>

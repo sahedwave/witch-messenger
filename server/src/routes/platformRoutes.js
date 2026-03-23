@@ -1,0 +1,868 @@
+import express from "express";
+import mongoose from "mongoose";
+
+import { authMiddleware } from "../middleware/auth.js";
+import { AuditLog } from "../models/AuditLog.js";
+import { Conversation } from "../models/Conversation.js";
+import { ExpenseRecord } from "../models/ExpenseRecord.js";
+import { FinanceActionLog } from "../models/FinanceActionLog.js";
+import { FinancePeriodLock } from "../models/FinancePeriodLock.js";
+import { InvoiceRecord } from "../models/InvoiceRecord.js";
+import { JournalEntry } from "../models/JournalEntry.js";
+import { MemoryCapsule } from "../models/MemoryCapsule.js";
+import { Message } from "../models/Message.js";
+import { PayrollRecord } from "../models/PayrollRecord.js";
+import { PdfReviewSession } from "../models/PdfReviewSession.js";
+import { PurchaseOrder } from "../models/PurchaseOrder.js";
+import { User } from "../models/User.js";
+import { WarehouseOrder } from "../models/WarehouseOrder.js";
+import { WarehouseProduct } from "../models/WarehouseProduct.js";
+import { Workspace } from "../models/Workspace.js";
+import { WorkspaceConversation } from "../models/WorkspaceConversation.js";
+import { WorkspaceMembership } from "../models/WorkspaceMembership.js";
+import { WorkspaceNotification } from "../models/WorkspaceNotification.js";
+import { WorkspaceProject } from "../models/WorkspaceProject.js";
+import { WorkspaceTask } from "../models/WorkspaceTask.js";
+import { pickAvatarColor } from "../utils/avatarColor.js";
+import { writeAuditLog } from "../utils/audit.js";
+import {
+  isSupportedTeamMemberRole,
+  resolveMembershipAccessFromTeamRole
+} from "../utils/workspaceMembershipRoles.js";
+import { serializeUser } from "../utils/serializers.js";
+import { serializeWorkspace, serializeWorkspaceMembership } from "../utils/workspaceContext.js";
+import { isValidEmail, validateName, validatePassword } from "../utils/validation.js";
+
+const router = express.Router();
+const WORKSPACE_ROLES = ["owner", "manager", "member"];
+const MODULE_IDS = ["finance", "warehouse"];
+const FINANCE_ROLES = ["viewer", "approver", "finance_staff", "accountant"];
+const MEMBERSHIP_STATUSES = ["active", "invited", "suspended"];
+const DELETED_USER_EMAIL = "deleted-user@system.local";
+const DELETED_USER_NAME = "Deleted User";
+
+router.use(authMiddleware);
+router.use((req, res, next) => {
+  if (!req.user?.isAdmin) {
+    return res.status(403).json({ message: "Platform owner access is required." });
+  }
+
+  return next();
+});
+
+function slugifyWorkspaceName(value = "") {
+  return String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+async function generateUniqueWorkspaceSlug(name, preferredSlug = "") {
+  const baseSlug = slugifyWorkspaceName(preferredSlug || name) || `workspace-${Date.now()}`;
+  let candidate = baseSlug;
+  let suffix = 1;
+
+  while (await Workspace.exists({ slug: candidate })) {
+    candidate = `${baseSlug}-${suffix}`.slice(0, 80);
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function normalizeModules(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return [...new Set(input.map((entry) => String(entry).trim()))];
+}
+
+function normalizeFinanceRoles(input) {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return [...new Set(input.map((entry) => String(entry).trim()))];
+}
+
+function isBaseWorkspaceRole(role) {
+  return ["owner", "manager", "member"].includes(String(role || "").trim());
+}
+
+function serializePlatformMember(user, membership) {
+  return {
+    user: serializeUser(user),
+    membership: serializeWorkspaceMembership(membership)
+  };
+}
+
+function serializePlatformOwner(user) {
+  return {
+    user: serializeUser(user)
+  };
+}
+
+async function ensureDeletedUserPlaceholder() {
+  let user = await User.findOne({ email: DELETED_USER_EMAIL }).select("+password");
+  if (user) {
+    return user;
+  }
+
+  user = await User.create({
+    name: DELETED_USER_NAME,
+    email: DELETED_USER_EMAIL,
+    password: `deleted-user-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    avatarColor: "#64748b",
+    isAdmin: false,
+    workspaceEnabled: false
+  });
+
+  return user;
+}
+
+async function cleanupDeletedUserData(user) {
+  const placeholderUser = await ensureDeletedUserPlaceholder();
+  const userId = user._id;
+  const placeholderId = placeholderUser._id;
+
+  const memberships = await WorkspaceMembership.find({ userId }).select("workspaceId");
+  const affectedWorkspaceIds = [...new Set(memberships.map((entry) => entry.workspaceId?.toString()).filter(Boolean))];
+
+  await WorkspaceMembership.deleteMany({ userId });
+  await Workspace.updateMany({ ownerUserId: userId }, { $set: { ownerUserId: null } });
+
+  await Promise.all(
+    affectedWorkspaceIds.map((workspaceId) => syncWorkspaceOwner(workspaceId))
+  );
+
+  await Promise.all([
+    Conversation.deleteMany({ participants: userId }),
+    Message.deleteMany({
+      $or: [{ sender: userId }, { recipient: userId }]
+    }),
+    MemoryCapsule.deleteMany({
+      $or: [{ initiator: userId }, { participant: userId }]
+    }),
+    PdfReviewSession.deleteMany({
+      $or: [{ initiator: userId }, { participant: userId }, { presenter: userId }]
+    }),
+    WorkspaceNotification.deleteMany({ recipientId: userId }),
+    AuditLog.updateMany({ actor: userId }, { $set: { actor: null } })
+  ]);
+
+  await Promise.all([
+    WorkspaceConversation.updateMany({ participantUserIds: userId }, { $pull: { participantUserIds: userId } }),
+    WorkspaceConversation.updateMany(
+      { "messages.senderUserId": userId },
+      {
+        $set: {
+          "messages.$[entry].senderUserId": placeholderId,
+          "messages.$[entry].senderName": DELETED_USER_NAME
+        }
+      },
+      { arrayFilters: [{ "entry.senderUserId": userId }] }
+    ),
+    WorkspaceTask.updateMany({ assignedTo: userId }, { $pull: { assignedTo: userId } }),
+    WorkspaceTask.updateMany(
+      { assigneeUserId: userId },
+      { $set: { assigneeUserId: null, assigneeName: "Unassigned" } }
+    ),
+    WorkspaceTask.updateMany({ createdByUserId: userId }, { $set: { createdByUserId: placeholderId } }),
+    WorkspaceTask.updateMany({ updatedByUserId: userId }, { $set: { updatedByUserId: placeholderId } }),
+    WorkspaceProject.updateMany(
+      { "team.userId": userId },
+      { $set: { "team.$[entry].userId": null } },
+      { arrayFilters: [{ "entry.userId": userId }] }
+    ),
+    WorkspaceProject.updateMany(
+      { "conversationLinks.linkedByUserId": userId },
+      { $set: { "conversationLinks.$[entry].linkedByUserId": null } },
+      { arrayFilters: [{ "entry.linkedByUserId": userId }] }
+    ),
+    WorkspaceProject.updateMany({ createdByUserId: userId }, { $set: { createdByUserId: placeholderId } }),
+    WorkspaceProject.updateMany({ updatedByUserId: userId }, { $set: { updatedByUserId: placeholderId } }),
+    InvoiceRecord.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    InvoiceRecord.updateMany({ approvedBy: userId }, { $set: { approvedBy: null } }),
+    InvoiceRecord.updateMany({ rejectedBy: userId }, { $set: { rejectedBy: null } }),
+    InvoiceRecord.updateMany({ paidBy: userId }, { $set: { paidBy: null } }),
+    InvoiceRecord.updateMany({ reconciledBy: userId }, { $set: { reconciledBy: null } }),
+    InvoiceRecord.updateMany(
+      { "payments.recordedBy": userId },
+      { $set: { "payments.$[entry].recordedBy": placeholderId } },
+      { arrayFilters: [{ "entry.recordedBy": userId }] }
+    ),
+    ExpenseRecord.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    ExpenseRecord.updateMany({ approvedBy: userId }, { $set: { approvedBy: null } }),
+    ExpenseRecord.updateMany({ rejectedBy: userId }, { $set: { rejectedBy: null } }),
+    ExpenseRecord.updateMany({ reimbursedBy: userId }, { $set: { reimbursedBy: null } }),
+    ExpenseRecord.updateMany({ reconciledBy: userId }, { $set: { reconciledBy: null } }),
+    PurchaseOrder.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    PurchaseOrder.updateMany({ updatedBy: userId }, { $set: { updatedBy: placeholderId } }),
+    WarehouseOrder.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    WarehouseOrder.updateMany({ updatedBy: userId }, { $set: { updatedBy: placeholderId } }),
+    WarehouseOrder.updateMany(
+      { "statusHistory.actor": userId },
+      { $set: { "statusHistory.$[entry].actor": placeholderId } },
+      { arrayFilters: [{ "entry.actor": userId }] }
+    ),
+    WarehouseProduct.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    WarehouseProduct.updateMany({ updatedBy: userId }, { $set: { updatedBy: placeholderId } }),
+    PayrollRecord.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    FinanceActionLog.updateMany({ performedBy: userId }, { $set: { performedBy: placeholderId } }),
+    FinancePeriodLock.updateMany({ lockedBy: userId }, { $set: { lockedBy: placeholderId } }),
+    JournalEntry.updateMany({ createdBy: userId }, { $set: { createdBy: placeholderId } }),
+    JournalEntry.updateMany({ updatedBy: userId }, { $set: { updatedBy: placeholderId } })
+  ]);
+
+  user.activeSessions = [];
+  user.sessionVersion += 1;
+  await user.save();
+  await User.deleteOne({ _id: userId });
+
+  return {
+    affectedWorkspaceIds
+  };
+}
+
+async function syncWorkspaceOwner(workspaceId, preferredOwnerUserId = null) {
+  const workspace = await Workspace.findById(workspaceId);
+  if (!workspace) {
+    return null;
+  }
+
+  if (preferredOwnerUserId && mongoose.isValidObjectId(preferredOwnerUserId)) {
+    workspace.ownerUserId = preferredOwnerUserId;
+    await workspace.save();
+    return workspace;
+  }
+
+  const ownerMembership = await WorkspaceMembership.findOne({
+    workspaceId,
+    workspaceRole: "owner",
+    status: { $ne: "suspended" }
+  }).sort({ updatedAt: -1, createdAt: 1 });
+
+  workspace.ownerUserId = ownerMembership?.userId || null;
+  await workspace.save();
+  return workspace;
+}
+
+async function buildWorkspaceSummary(workspace) {
+  const memberships = await WorkspaceMembership.find({
+    workspaceId: workspace._id
+  }).populate("userId", "name email isAdmin");
+
+  const activeMemberships = memberships.filter((membership) => membership.status !== "suspended");
+  const ownerMembership =
+    activeMemberships.find((membership) => membership.workspaceRole === "owner") || null;
+  const modules = [...new Set(activeMemberships.flatMap((membership) => membership.modules || []))];
+
+  return {
+    workspace: serializeWorkspace(workspace),
+    owner: ownerMembership?.userId ? serializeUser(ownerMembership.userId) : null,
+    memberCount: activeMemberships.length,
+    suspendedMemberCount: memberships.length - activeMemberships.length,
+    modules
+  };
+}
+
+router.get("/workspaces", async (_req, res) => {
+  try {
+    const workspaces = await Workspace.find({}).sort({ createdAt: -1 });
+    const summaries = await Promise.all(workspaces.map(buildWorkspaceSummary));
+
+    return res.json({ workspaces: summaries });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to load platform workspaces." });
+  }
+});
+
+router.get("/owners", async (_req, res) => {
+  try {
+    const owners = await User.find({ isAdmin: true }).sort({ createdAt: 1 });
+
+    return res.json({
+      owners: owners.map(serializePlatformOwner)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to load platform owners." });
+  }
+});
+
+router.post("/owners", async (req, res) => {
+  try {
+    const email = req.body.email?.trim().toLowerCase() || "";
+    const providedName = req.body.name?.trim() || "";
+    const password = req.body.password?.trim() || "";
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid email is required." });
+    }
+
+    let user = await User.findOne({ email }).select("+password");
+    const creatingNewUser = !user;
+
+    if (!user) {
+      const nameToUse = providedName || email.split("@")[0];
+      const nameError = validateName(nameToUse);
+      if (nameError) {
+        return res.status(400).json({ message: nameError });
+      }
+
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+      }
+
+      user = await User.create({
+        name: nameToUse,
+        email,
+        password,
+        avatarColor: pickAvatarColor(email),
+        isAdmin: true
+      });
+    } else {
+      if (providedName && providedName !== user.name) {
+        const nameError = validateName(providedName);
+        if (nameError) {
+          return res.status(400).json({ message: nameError });
+        }
+        user.name = providedName;
+      }
+
+      if (password) {
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+          return res.status(400).json({ message: passwordError });
+        }
+        user.password = password;
+      }
+
+      user.isAdmin = true;
+      await user.save();
+    }
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: creatingNewUser ? "platform.owner.create" : "platform.owner.grant",
+      targetId: user._id.toString(),
+      targetType: "User",
+      metadata: {
+        email: user.email,
+        name: user.name
+      }
+    });
+
+    return res.status(201).json({
+      owner: serializePlatformOwner(user)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to add the platform owner." });
+  }
+});
+
+router.delete("/users/:userId", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid user id." });
+    }
+
+    const confirmEmail = String(req.body.confirmEmail || "").trim().toLowerCase();
+    const user = await User.findById(req.params.userId).select("+password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    if (user.email === DELETED_USER_EMAIL) {
+      return res.status(400).json({ message: "The deleted-user placeholder cannot be removed." });
+    }
+
+    if (user._id.toString() === req.user?._id?.toString?.()) {
+      return res.status(400).json({ message: "Platform owners cannot delete their own account from here." });
+    }
+
+    if (confirmEmail !== user.email) {
+      return res.status(400).json({ message: "Confirmation email did not match the selected user." });
+    }
+
+    if (user.isAdmin) {
+      const adminCount = await User.countDocuments({ isAdmin: true });
+      if (adminCount <= 1) {
+        return res.status(400).json({ message: "The last platform owner cannot be deleted." });
+      }
+    }
+
+    const cleanup = await cleanupDeletedUserData(user);
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: "platform.user.delete",
+      targetId: user._id.toString(),
+      targetType: "User",
+      metadata: {
+        email: user.email,
+        name: user.name,
+        affectedWorkspaceIds: cleanup.affectedWorkspaceIds
+      }
+    });
+
+    return res.json({
+      deleted: true,
+      userId: req.params.userId
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to delete the user." });
+  }
+});
+
+router.post("/workspaces", async (req, res) => {
+  try {
+    const name = req.body.name?.trim() || "";
+    const requestedSlug = req.body.slug?.trim() || "";
+
+    if (!name) {
+      return res.status(400).json({ message: "Workspace name is required." });
+    }
+
+    const slug = await generateUniqueWorkspaceSlug(name, requestedSlug);
+    const workspace = await Workspace.create({
+      name,
+      slug,
+      ownerUserId: null,
+      status: "active"
+    });
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: "platform.workspace.create",
+      targetId: workspace._id.toString(),
+      targetType: "Workspace",
+      metadata: {
+        name: workspace.name,
+        slug: workspace.slug
+      }
+    });
+
+    return res.status(201).json({
+      workspace: serializeWorkspace(workspace)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to create workspace." });
+  }
+});
+
+router.get("/workspaces/:workspaceId", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.workspaceId)) {
+      return res.status(400).json({ message: "Invalid workspace id." });
+    }
+
+    const workspace = await Workspace.findById(req.params.workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ message: "Workspace not found." });
+    }
+
+    const summary = await buildWorkspaceSummary(workspace);
+    return res.json(summary);
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to load workspace details." });
+  }
+});
+
+router.get("/workspaces/:workspaceId/members", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.workspaceId)) {
+      return res.status(400).json({ message: "Invalid workspace id." });
+    }
+
+    const workspace = await Workspace.findById(req.params.workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ message: "Workspace not found." });
+    }
+
+    const memberships = await WorkspaceMembership.find({
+      workspaceId: workspace._id
+    })
+      .sort({ createdAt: 1 })
+      .populate("userId");
+
+    return res.json({
+      workspace: serializeWorkspace(workspace),
+      members: memberships
+        .filter((membership) => membership.userId)
+        .map((membership) => serializePlatformMember(membership.userId, membership))
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to load workspace members." });
+  }
+});
+
+router.post("/workspaces/:workspaceId/members", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.workspaceId)) {
+      return res.status(400).json({ message: "Invalid workspace id." });
+    }
+
+    const workspace = await Workspace.findById(req.params.workspaceId);
+    if (!workspace) {
+      return res.status(404).json({ message: "Workspace not found." });
+    }
+
+    const email = req.body.email?.trim().toLowerCase() || "";
+    const name = req.body.name?.trim() || "";
+    const password = req.body.password?.trim() || "";
+    const requestedRole = req.body.role === undefined ? undefined : String(req.body.role || "").trim();
+    const roleConfig = requestedRole ? resolveMembershipAccessFromTeamRole(requestedRole) : null;
+    const workspaceRole = String(roleConfig?.workspaceRole || req.body.workspaceRole || "member").trim();
+    const modules = requestedRole && isBaseWorkspaceRole(requestedRole)
+      ? normalizeModules(req.body.modules ?? roleConfig?.modules ?? [])
+      : roleConfig?.modules || normalizeModules(req.body.modules);
+    const financeRoles = requestedRole && isBaseWorkspaceRole(requestedRole)
+      ? normalizeFinanceRoles(req.body.financeRoles ?? roleConfig?.financeRoles ?? [])
+      : roleConfig?.financeRoles || normalizeFinanceRoles(req.body.financeRoles);
+    const status = String(req.body.status || "active").trim();
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json({ message: "A valid customer email is required." });
+    }
+
+    if (requestedRole !== undefined && !isSupportedTeamMemberRole(requestedRole)) {
+      return res.status(400).json({ message: `Invalid workspace role: ${requestedRole}` });
+    }
+
+    if (!WORKSPACE_ROLES.includes(workspaceRole)) {
+      return res.status(400).json({ message: `Invalid workspace role: ${workspaceRole}` });
+    }
+
+    const invalidModule = modules.find((moduleId) => !MODULE_IDS.includes(moduleId));
+    if (invalidModule) {
+      return res.status(400).json({ message: `Invalid module: ${invalidModule}` });
+    }
+
+    const invalidFinanceRole = financeRoles.find((role) => !FINANCE_ROLES.includes(role));
+    if (invalidFinanceRole) {
+      return res.status(400).json({ message: `Invalid finance role: ${invalidFinanceRole}` });
+    }
+
+    if (financeRoles.length && !modules.includes("finance")) {
+      return res.status(400).json({ message: "Finance roles can only be assigned when finance access is enabled." });
+    }
+
+    if (!MEMBERSHIP_STATUSES.includes(status)) {
+      return res.status(400).json({ message: `Invalid membership status: ${status}` });
+    }
+
+    let user = await User.findOne({ email }).select("+password");
+    const nameToUse = name || email.split("@")[0];
+
+    if (!user) {
+      const nameError = validateName(nameToUse);
+      if (nameError) {
+        return res.status(400).json({ message: nameError });
+      }
+
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+      }
+
+      user = await User.create({
+        name: nameToUse,
+        email,
+        password,
+        avatarColor: pickAvatarColor(email)
+      });
+    } else {
+      if (name && name !== user.name) {
+        const nameError = validateName(name);
+        if (nameError) {
+          return res.status(400).json({ message: nameError });
+        }
+        user.name = name;
+      }
+
+      if (password) {
+        const passwordError = validatePassword(password);
+        if (passwordError) {
+          return res.status(400).json({ message: passwordError });
+        }
+        user.password = password;
+      }
+
+      if (user.isModified("name") || user.isModified("password")) {
+        await user.save();
+      }
+    }
+
+    const membership = await WorkspaceMembership.findOneAndUpdate(
+      {
+        workspaceId: workspace._id,
+        userId: user._id
+      },
+      {
+        $set: {
+          email: user.email,
+          workspaceRole,
+          modules,
+          financeRoles: modules.includes("finance") ? financeRoles : [],
+          status,
+          invitedBy: req.user._id
+        }
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true
+      }
+    );
+
+    if (workspaceRole === "owner" && status !== "suspended") {
+      await syncWorkspaceOwner(workspace._id, user._id);
+    } else if (workspace.ownerUserId?.toString?.() === user._id.toString()) {
+      await syncWorkspaceOwner(workspace._id);
+    }
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: "platform.workspace.member.provision",
+      targetId: user._id.toString(),
+      targetType: "WorkspaceMembership",
+      metadata: {
+        workspaceId: workspace._id.toString(),
+        email: user.email,
+        role: requestedRole || null,
+        workspaceRole,
+        modules,
+        financeRoles,
+        status
+      }
+    });
+
+    return res.status(201).json({
+      member: serializePlatformMember(user, membership)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to provision the customer account." });
+  }
+});
+
+router.patch("/workspaces/:workspaceId/members/:userId", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.workspaceId)) {
+      return res.status(400).json({ message: "Invalid workspace id." });
+    }
+
+    if (!mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid user id." });
+    }
+
+    const [workspace, user] = await Promise.all([
+      Workspace.findById(req.params.workspaceId),
+      User.findById(req.params.userId).select("+password")
+    ]);
+
+    if (!workspace) {
+      return res.status(404).json({ message: "Workspace not found." });
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found." });
+    }
+
+    const membership = await WorkspaceMembership.findOne({
+      workspaceId: workspace._id,
+      userId: user._id
+    });
+
+    if (!membership) {
+      return res.status(404).json({ message: "Workspace membership not found." });
+    }
+
+    const email = req.body.email?.trim().toLowerCase();
+    const name = req.body.name?.trim();
+    const password = req.body.password?.trim();
+    const requestedRole = req.body.role === undefined ? undefined : String(req.body.role || "").trim();
+    const roleConfig = requestedRole ? resolveMembershipAccessFromTeamRole(requestedRole) : null;
+    const workspaceRole = requestedRole !== undefined
+      ? String(roleConfig?.workspaceRole || "")
+      : req.body.workspaceRole === undefined
+        ? undefined
+        : String(req.body.workspaceRole || "").trim();
+    const modules = requestedRole !== undefined
+      ? isBaseWorkspaceRole(requestedRole)
+        ? normalizeModules(req.body.modules ?? roleConfig?.modules ?? [])
+        : roleConfig?.modules
+      : req.body.modules === undefined
+        ? undefined
+        : normalizeModules(req.body.modules);
+    const financeRoles = requestedRole !== undefined
+      ? isBaseWorkspaceRole(requestedRole)
+        ? normalizeFinanceRoles(req.body.financeRoles ?? roleConfig?.financeRoles ?? [])
+        : roleConfig?.financeRoles
+      : req.body.financeRoles === undefined
+        ? undefined
+        : normalizeFinanceRoles(req.body.financeRoles);
+    const status = req.body.status === undefined ? undefined : String(req.body.status || "").trim();
+
+    if (requestedRole !== undefined && !isSupportedTeamMemberRole(requestedRole)) {
+      return res.status(400).json({ message: `Invalid workspace role: ${requestedRole}` });
+    }
+
+    if (email !== undefined) {
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ message: "A valid customer email is required." });
+      }
+
+      const duplicateUser = await User.findOne({
+        email,
+        _id: { $ne: user._id }
+      }).select("_id");
+
+      if (duplicateUser) {
+        return res.status(409).json({ message: "Another user already uses that email." });
+      }
+
+      user.email = email;
+      membership.email = email;
+    }
+
+    if (name !== undefined) {
+      const nameError = validateName(name);
+      if (nameError) {
+        return res.status(400).json({ message: nameError });
+      }
+      user.name = name;
+    }
+
+    if (password) {
+      const passwordError = validatePassword(password);
+      if (passwordError) {
+        return res.status(400).json({ message: passwordError });
+      }
+      user.password = password;
+    }
+
+    if (workspaceRole !== undefined) {
+      if (!WORKSPACE_ROLES.includes(workspaceRole)) {
+        return res.status(400).json({ message: `Invalid workspace role: ${workspaceRole}` });
+      }
+      membership.workspaceRole = workspaceRole;
+    }
+
+    if (modules !== undefined) {
+      const invalidModule = modules.find((moduleId) => !MODULE_IDS.includes(moduleId));
+      if (invalidModule) {
+        return res.status(400).json({ message: `Invalid module: ${invalidModule}` });
+      }
+      membership.modules = modules;
+      if (!modules.includes("finance")) {
+        membership.financeRoles = [];
+      }
+    }
+
+    if (financeRoles !== undefined) {
+      const invalidFinanceRole = financeRoles.find((role) => !FINANCE_ROLES.includes(role));
+      if (invalidFinanceRole) {
+        return res.status(400).json({ message: `Invalid finance role: ${invalidFinanceRole}` });
+      }
+
+      const effectiveModules = modules !== undefined ? modules : membership.modules || [];
+      if (financeRoles.length && !effectiveModules.includes("finance")) {
+        return res.status(400).json({ message: "Finance roles can only be assigned when finance access is enabled." });
+      }
+
+      membership.financeRoles = financeRoles;
+    }
+
+    if (status !== undefined) {
+      if (!MEMBERSHIP_STATUSES.includes(status)) {
+        return res.status(400).json({ message: `Invalid membership status: ${status}` });
+      }
+      membership.status = status;
+    }
+
+    await user.save();
+    await membership.save();
+
+    if (membership.workspaceRole === "owner" && membership.status !== "suspended") {
+      await syncWorkspaceOwner(workspace._id, user._id);
+    } else if (workspace.ownerUserId?.toString?.() === user._id.toString()) {
+      await syncWorkspaceOwner(workspace._id);
+    }
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: "platform.workspace.member.update",
+      targetId: user._id.toString(),
+      targetType: "WorkspaceMembership",
+      metadata: {
+        workspaceId: workspace._id.toString(),
+        email: membership.email,
+        role: requestedRole || null,
+        workspaceRole: membership.workspaceRole,
+        modules: membership.modules,
+        financeRoles: membership.financeRoles,
+        status: membership.status
+      }
+    });
+
+    return res.json({
+      member: serializePlatformMember(user, membership)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to update customer access." });
+  }
+});
+
+router.patch("/workspaces/:workspaceId/members/:userId/status", async (req, res) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.workspaceId)) {
+      return res.status(400).json({ message: "Invalid workspace id." });
+    }
+
+    if (!mongoose.isValidObjectId(req.params.userId)) {
+      return res.status(400).json({ message: "Invalid user id." });
+    }
+
+    const nextStatus = String(req.body.status || "").trim();
+    if (!["active", "suspended"].includes(nextStatus)) {
+      return res.status(400).json({ message: "Status must be active or suspended." });
+    }
+
+    const membership = await WorkspaceMembership.findOne({
+      workspaceId: req.params.workspaceId,
+      userId: req.params.userId
+    }).populate("userId");
+
+    if (!membership || !membership.userId) {
+      return res.status(404).json({ message: "Workspace membership not found." });
+    }
+
+    membership.status = nextStatus;
+    await membership.save();
+    await syncWorkspaceOwner(req.params.workspaceId);
+
+    await writeAuditLog({
+      actor: req.user._id,
+      action: "platform.workspace.member.status",
+      targetId: req.params.userId,
+      targetType: "WorkspaceMembership",
+      metadata: {
+        workspaceId: req.params.workspaceId,
+        status: nextStatus
+      }
+    });
+
+    return res.json({
+      member: serializePlatformMember(membership.userId, membership)
+    });
+  } catch (error) {
+    return res.status(500).json({ message: "Unable to update membership status." });
+  }
+});
+
+export default router;
