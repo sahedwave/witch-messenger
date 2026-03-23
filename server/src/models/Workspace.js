@@ -36,6 +36,20 @@ const workspaceSchema = new mongoose.Schema(
       trim: true,
       maxlength: 8
     },
+    disabled: {
+      type: Boolean,
+      default: false
+    },
+    disabledAt: {
+      type: Date,
+      default: null
+    },
+    disabledReason: {
+      type: String,
+      default: null,
+      trim: true,
+      maxlength: 240
+    },
     status: {
       type: String,
       enum: ["active", "archived"],

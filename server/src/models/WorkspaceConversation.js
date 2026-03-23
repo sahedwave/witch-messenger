@@ -60,7 +60,7 @@ const workspaceConversationSchema = new mongoose.Schema(
     },
     kind: {
       type: String,
-      enum: ["bot", "direct"],
+      enum: ["bot", "direct", "group"],
       required: true
     },
     botType: {

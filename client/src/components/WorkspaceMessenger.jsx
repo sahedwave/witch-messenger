@@ -207,12 +207,207 @@ function normalizePlatformWorkspaceMember(entry) {
     isAdmin: Boolean(user.isAdmin),
     workspaceEnabled: membership.status !== "suspended",
     workspaceRole: membership.workspaceRole || "member",
+    teamRole: membership.teamRole || null,
     workspaceRoles: Array.isArray(membership.financeRoles) ? membership.financeRoles : [],
     workspaceModules: Array.isArray(membership.modules) ? membership.modules : [],
     presenceStatus: user.presenceStatus || "offline",
     lastActiveAt: user.lastActiveAt || null,
     membershipStatus: membership.status || "active"
   };
+}
+
+const DISABLED_WORKSPACE_MESSAGE = "This workspace has been disabled. Please contact your administrator.";
+const WORKSPACE_ACCESS_DENIED_MESSAGE = "You do not have access to this workspace";
+const TEAM_MEMBER_ROLE_OPTIONS = [
+  { id: "owner", label: "Owner" },
+  { id: "manager", label: "Manager" },
+  { id: "accountant", label: "Accountant" },
+  { id: "finance_staff", label: "Finance staff" },
+  { id: "approver", label: "Approver" },
+  { id: "viewer", label: "Viewer" },
+  { id: "warehouse_staff", label: "Warehouse staff" }
+];
+const WORKSPACE_BASE_ROLE_OPTIONS = [
+  { id: "owner", label: "Owner" },
+  { id: "manager", label: "Manager" },
+  { id: "member", label: "Member" }
+];
+const PURCHASED_MODULE_OPTIONS = [
+  ["finance", "Finance"],
+  ["warehouse", "Warehouse"]
+];
+const FINANCE_ACCESS_ROLE_OPTIONS = [
+  ["viewer", "Viewer"],
+  ["approver", "Approver"],
+  ["finance_staff", "Finance Staff"],
+  ["accountant", "Accountant"]
+];
+const TEAM_MEMBER_TOGGLE_ROLE_OPTIONS = TEAM_MEMBER_ROLE_OPTIONS.filter((option) => option.id !== "owner");
+
+function isDisabledWorkspaceError(error) {
+  return error?.status === 403 && String(error?.message || "").trim() === DISABLED_WORKSPACE_MESSAGE;
+}
+
+function isWorkspaceAccessDeniedError(error) {
+  const message = String(error?.message || "").trim();
+  return (
+    error?.status === 403 &&
+    (message === WORKSPACE_ACCESS_DENIED_MESSAGE || message === "Workspace access is required.")
+  );
+}
+
+function formatTeamMemberRoleLabel(roleId = "") {
+  return WORKSPACE_BASE_ROLE_OPTIONS.find((option) => option.id === roleId)?.label ||
+    TEAM_MEMBER_ROLE_OPTIONS.find((option) => option.id === roleId)?.label ||
+    String(roleId || "member").replaceAll("_", " ");
+}
+
+function deriveTeamMemberRole(member) {
+  if (member?.teamRole) {
+    return member.teamRole;
+  }
+
+  if (member?.workspaceRole === "owner" || member?.workspaceRole === "manager") {
+    return member.workspaceRole;
+  }
+
+  const roles = Array.isArray(member?.workspaceRoles) ? member.workspaceRoles : [];
+  const modules = Array.isArray(member?.workspaceModules) ? member.workspaceModules : [];
+
+  if (roles.includes("accountant")) {
+    return "accountant";
+  }
+  if (roles.includes("finance_staff")) {
+    return "finance_staff";
+  }
+  if (roles.includes("approver")) {
+    return "approver";
+  }
+  if (roles.includes("viewer")) {
+    return "viewer";
+  }
+  if (modules.includes("warehouse")) {
+    return "warehouse_staff";
+  }
+
+  return "member";
+}
+
+function formatWorkspaceMembershipStatus(status) {
+  if (status === "suspended") {
+    return "disabled";
+  }
+
+  return String(status || "active");
+}
+
+function hasTeamMemberRoleEnabled(member, roleId) {
+  const financeRoles = Array.isArray(member?.workspaceRoles) ? member.workspaceRoles : [];
+  const modules = Array.isArray(member?.workspaceModules) ? member.workspaceModules : [];
+  const workspaceRole = String(member?.workspaceRole || "member");
+
+  if (roleId === "manager") {
+    return workspaceRole === "manager";
+  }
+
+  if (roleId === "warehouse_staff") {
+    return modules.includes("warehouse");
+  }
+
+  return financeRoles.includes(roleId);
+}
+
+function toggleWorkspaceMemberRolePreview(member, roleId) {
+  const nextFinanceRoles = [...new Set(Array.isArray(member?.workspaceRoles) ? member.workspaceRoles : [])];
+  const nextModules = [...new Set(Array.isArray(member?.workspaceModules) ? member.workspaceModules : [])];
+  let nextWorkspaceRole = String(member?.workspaceRole || "member");
+
+  if (roleId === "manager") {
+    if (nextWorkspaceRole === "manager") {
+      nextWorkspaceRole = "member";
+    } else if (nextWorkspaceRole !== "owner") {
+      nextWorkspaceRole = "manager";
+      if (!nextModules.includes("finance")) {
+        nextModules.push("finance");
+      }
+      if (!nextModules.includes("warehouse")) {
+        nextModules.push("warehouse");
+      }
+      for (const financeRole of ["viewer", "approver", "finance_staff"]) {
+        if (!nextFinanceRoles.includes(financeRole)) {
+          nextFinanceRoles.push(financeRole);
+        }
+      }
+    }
+  } else if (roleId === "warehouse_staff") {
+    if (nextModules.includes("warehouse")) {
+      nextModules.splice(nextModules.indexOf("warehouse"), 1);
+    } else {
+      nextModules.push("warehouse");
+    }
+  } else if (nextFinanceRoles.includes(roleId)) {
+    nextFinanceRoles.splice(nextFinanceRoles.indexOf(roleId), 1);
+  } else {
+    nextFinanceRoles.push(roleId);
+    if (!nextModules.includes("finance")) {
+      nextModules.push("finance");
+    }
+  }
+
+  const dedupedFinanceRoles = [...new Set(nextFinanceRoles)];
+  let dedupedModules = [...new Set(nextModules)];
+
+  if (!dedupedFinanceRoles.length && nextWorkspaceRole !== "owner" && nextWorkspaceRole !== "manager") {
+    dedupedModules = dedupedModules.filter((entry) => entry !== "finance");
+  }
+
+  const nextMember = {
+    ...member,
+    workspaceRole: nextWorkspaceRole,
+    workspaceRoles: dedupedFinanceRoles,
+    workspaceModules: dedupedModules
+  };
+
+  return {
+    ...nextMember,
+    teamRole: deriveTeamMemberRole(nextMember)
+  };
+}
+
+function previewPlatformWorkspaceMemberAccess(member, updates = {}) {
+  const nextMember = {
+    ...member,
+    workspaceEnabled:
+      updates.workspaceEnabled !== undefined
+        ? Boolean(updates.workspaceEnabled)
+        : Boolean(member?.workspaceEnabled),
+    membershipStatus:
+      updates.workspaceEnabled !== undefined
+        ? (updates.workspaceEnabled ? "active" : "suspended")
+        : (member?.membershipStatus || "active")
+  };
+
+  if (updates.workspaceRole !== undefined) {
+    nextMember.workspaceRole = updates.workspaceRole;
+  }
+
+  const nextModules = updates.workspaceModules !== undefined
+    ? [...new Set(Array.isArray(updates.workspaceModules) ? updates.workspaceModules : [])]
+    : [...new Set(Array.isArray(member?.workspaceModules) ? member.workspaceModules : [])];
+
+  let nextFinanceRoles = updates.financeRoles !== undefined
+    ? [...new Set(Array.isArray(updates.financeRoles) ? updates.financeRoles : [])]
+    : [...new Set(Array.isArray(member?.workspaceRoles) ? member.workspaceRoles : [])];
+
+  if (!nextModules.includes("finance")) {
+    nextFinanceRoles = [];
+  }
+
+  nextMember.workspaceModules = nextModules;
+  nextMember.workspaceRoles = nextFinanceRoles;
+  nextMember.teamRole = deriveTeamMemberRole(nextMember);
+
+  return nextMember;
 }
 
 function buildLinkedWorkExcerpt(message) {
@@ -846,6 +1041,18 @@ function canSeeThread(thread, role, workspaceScope = "both", workspaceMode = "de
   return canSeeBot(thread.botType, role) && canAccessWorkspaceScope(thread.botType, workspaceScope);
 }
 
+function threadHasVisibleConversation(thread) {
+  if (thread?.isBot) {
+    return true;
+  }
+
+  if (thread?.isWorkspaceConversation && thread?.kind === "group") {
+    return true;
+  }
+
+  return Array.isArray(thread?.messages) && thread.messages.length > 0;
+}
+
 function visibleCommandItems(role, draft, workspaceScope = "both", financePermissions = null) {
   const query = draft.trim().toLowerCase().split(/\s+/)[0];
   return COMMAND_ITEMS.filter((item) => {
@@ -918,6 +1125,9 @@ function avatarForThread(thread) {
   }
   if (thread.id === "warebot") {
     return { label: "📦", bg: "bg-slate-900", fg: "text-orange-300" };
+  }
+  if (thread?.kind === "group") {
+    return { label: "#", bg: "bg-slate-900", fg: "text-emerald-300" };
   }
 
   return {
@@ -1089,6 +1299,38 @@ function displayTabLabel(tab, financeMode) {
   if (tab === "Media") return "Analytics";
   if (tab === "Links") return "Approvals";
   return tab;
+}
+
+function describeFinanceWorkspaceAccess(canManageFinanceMembers, financePermissions = null) {
+  if (canManageFinanceMembers || financePermissions?.canCreate) {
+    return {
+      label: canManageFinanceMembers ? "Owner / manager view" : "Finance staff view",
+      description: "You can run day-to-day finance work here, including invoices, expenses, payments, and approval operations.",
+      highlights: ["Reports", "Approvals", "Operations"]
+    };
+  }
+
+  if (financePermissions?.isAccountant) {
+    return {
+      label: "Accountant view",
+      description: "You can review accounting reports, account balances, and close-readiness without running daily finance operations.",
+      highlights: ["Reports", "Accounting", "Accountant"]
+    };
+  }
+
+  if (financePermissions?.canApprove) {
+    return {
+      label: "Approver view",
+      description: "You can monitor the business snapshot and work through approvals, but you cannot create or edit finance records.",
+      highlights: ["Reports", "Approvals"]
+    };
+  }
+
+  return {
+    label: "Viewer view",
+    description: "You have a read-only finance snapshot with business visibility, but no editing or approval controls.",
+    highlights: ["Reports"]
+  };
 }
 
 function financeThreadDescriptor(thread) {
@@ -1978,6 +2220,7 @@ function ThreadListPanel({ role, activeNav, activeThreadId, onOpenThread, filter
   const visibleThreads = useMemo(() => {
     return threads
       .filter((thread) => canSeeThread(thread, role, workspaceScope, workspaceMode))
+      .filter((thread) => threadHasVisibleConversation(thread))
       .filter((thread) => {
         if (filter === "archived") {
           return thread.archived;
@@ -2167,6 +2410,27 @@ function ThreadListPanel({ role, activeNav, activeThreadId, onOpenThread, filter
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
+        {!visibleThreads.length ? (
+          <div
+            className="rounded-[18px] border px-4 py-5 text-sm"
+            style={
+              financeMode
+                ? {
+                    borderColor: "rgba(255,255,255,0.08)",
+                    background: "rgba(255,255,255,0.04)",
+                    color: "#94a3b8"
+                  }
+                : {
+                    borderColor: "rgba(148,163,184,0.16)",
+                    background: "#f8fafc",
+                    color: "#64748b"
+                  }
+            }
+          >
+            <strong className={financeMode ? "text-slate-100" : "text-slate-900"}>No conversations yet.</strong>
+            <p className="mt-2 leading-6">Select a contact to start messaging.</p>
+          </div>
+        ) : null}
         <AnimatePresence initial={false}>
           {visibleThreads.map((thread) => {
             const avatar = avatarForThread(thread);
@@ -3407,8 +3671,8 @@ function buildFinanceApprovalSections(messages) {
     },
     {
       id: "awaiting-reconciliation",
-      title: "Awaiting Reconciliation",
-      description: "Paid invoices and approved or reimbursed expenses that still need reconciliation.",
+      title: "Awaiting Payment Matching",
+      description: "Paid invoices and approved or reimbursed expenses that still need payment matching.",
       accent: "#38bdf8",
       items: []
     }
@@ -3517,8 +3781,8 @@ function buildFinanceQueueSummary(messages) {
     notices.push({
       id: "reconciliation",
       eyebrow: "Follow-through",
-      title: `${awaitingReconciliation.length} item${awaitingReconciliation.length === 1 ? "" : "s"} await reconciliation`,
-      body: "Payments and expenses are still open until reconciliation is finished.",
+      title: `${awaitingReconciliation.length} item${awaitingReconciliation.length === 1 ? "" : "s"} need payment matching`,
+      body: "Payments and expenses still need to be matched so everything is marked complete.",
       accent: "#38bdf8",
       tone: "info"
     });
@@ -3529,7 +3793,7 @@ function buildFinanceQueueSummary(messages) {
       id: "queue-steady",
       eyebrow: "Queue status",
       title: `${pendingDecision.length + awaitingPayment.length} finance item${pendingDecision.length + awaitingPayment.length === 1 ? "" : "s"} are in motion`,
-      body: "The queue is active, but there are no overdue or reconciliation risks at the moment.",
+      body: "The queue is active, and there are no overdue or payment-matching risks right now.",
       accent: "#10b981",
       tone: "success"
     });
@@ -3567,7 +3831,7 @@ function FinanceQueueSummary({ summary, compact = false }) {
     },
     {
       id: "reconciliation",
-      label: "Awaiting reconciliation",
+      label: "Awaiting payment matching",
       value: summary.awaitingReconciliation.length,
       accent: "#38bdf8"
     }
@@ -3755,7 +4019,7 @@ function FinanceFilterToolbar({
                 <option value="partial">Partial</option>
                 <option value="paid">Paid</option>
                 <option value="overdue">Overdue</option>
-                <option value="reconciled">Reconciled</option>
+                <option value="reconciled">Payment matched</option>
                 <option value="rejected">Rejected</option>
               </select>
             </label>
@@ -3783,7 +4047,7 @@ function FinanceFilterToolbar({
                 <option value="approved">Approved</option>
                 <option value="rejected">Rejected</option>
                 <option value="reimbursed">Reimbursed</option>
-                <option value="reconciled">Reconciled</option>
+                <option value="reconciled">Payment matched</option>
               </select>
             </label>
           </div>
@@ -4052,7 +4316,7 @@ function FinanceReportingSnapshot({
     ["partial", "Partial"],
     ["paid", "Paid"],
     ["overdue", "Overdue"],
-    ["reconciled", "Reconciled"],
+    ["reconciled", "Payment matched"],
     ["rejected", "Rejected"]
   ];
 
@@ -4068,7 +4332,7 @@ function FinanceReportingSnapshot({
       >
         <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-400">Reporting snapshot</div>
         <h3 className="mt-2 text-xl font-bold text-white">Invoice status breakdown</h3>
-        <p className="mt-2 text-sm text-slate-400">A quick read on how invoices are moving through review, payment, and reconciliation.</p>
+        <p className="mt-2 text-sm text-slate-400">A quick read on how invoices are moving through review, payment, and payment matching.</p>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {breakdownItems.map(([id, label]) => (
@@ -6159,13 +6423,13 @@ function FinanceBankingPanel({
                   <div className="mt-2 text-2xl font-bold text-slate-100">{unmatchedTransactions.length}</div>
                 </div>
                 <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Reconciled</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Payment matched</div>
                   <div className="mt-2 text-sm font-semibold text-emerald-300">{formatMoneyDisplay(reconciledTotals || {})}</div>
                 </div>
                 <div className="rounded-[18px] border border-white/8 bg-white/5 px-4 py-4">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Last sync</div>
                   <div className="mt-2 text-sm font-semibold text-slate-100">{selectedAccount.lastSyncedAt ? formatDateTime(selectedAccount.lastSyncedAt) : "Never"}</div>
-                  <div className="mt-1 text-xs text-slate-500">{lastReconciledAt ? `Last reconciliation ${formatTimeAgo(lastReconciledAt)}` : "No reconciliations yet"}</div>
+                  <div className="mt-1 text-xs text-slate-500">{lastReconciledAt ? `Last payment match ${formatTimeAgo(lastReconciledAt)}` : "No payment matches yet"}</div>
                 </div>
               </div>
 
@@ -6263,7 +6527,7 @@ function FinanceBankingPanel({
                           <span className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-emerald-300">Matched to payment</span>
                         ) : null}
                         {transaction.reconciled ? (
-                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Reconciled</span>
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-slate-300">Payment matched</span>
                         ) : null}
                         {Number(transaction.matchConfidence || 0) > 0 ? (
                           <span className="rounded-full border border-amber-400/20 bg-amber-500/10 px-3 py-1 text-amber-200">
@@ -6318,7 +6582,7 @@ function FinanceBankingPanel({
                               onClick={() => onReconcileBankTransaction?.(transaction.id)}
                               className="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-300"
                             >
-                              Mark reconciled
+                                Mark matched
                             </button>
                             {(transaction.matchedExpenseId || transaction.matchedInvoicePaymentId) && onReconcileMatchedBankTransactions ? (
                               <button
@@ -6326,7 +6590,7 @@ function FinanceBankingPanel({
                                 onClick={() => onReconcileMatchedBankTransactions(selectedAccount.id)}
                                 className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-200"
                               >
-                                Reconcile matched batch
+                                Match batch
                               </button>
                             ) : null}
                           </div>
@@ -8831,7 +9095,7 @@ function InvoiceMessageCard({
             {blockedPeriodLabel ? `${blockedPeriodLabel} is locked for accounting changes.` : "This invoice is currently blocked for accounting changes."}
           </div>
           <div style={{ marginTop: 4, color: "#fca5a5", fontSize: 12 }}>
-            {accounting.blockedReason || "Unlock the period before changing approval, payment, reconciliation, or other posting-related fields."}
+            {accounting.blockedReason || "Reopen this month before changing approval, payment, payment matching, or other accounting fields."}
           </div>
         </div>
       ) : null}
@@ -9819,6 +10083,19 @@ function useMessageInteractionState({
     return () => window.removeEventListener("pointerdown", handlePointerDown);
   }, [activePicker, setActivePicker]);
 
+  useEffect(() => {
+    if (!activePicker) {
+      return undefined;
+    }
+
+    function closePicker() {
+      setActivePicker(null);
+    }
+
+    window.addEventListener("scroll", closePicker, true);
+    return () => window.removeEventListener("scroll", closePicker, true);
+  }, [activePicker, setActivePicker]);
+
   const handleReact = useCallback((messageId, emoji) => {
     const currentUserId = workspaceState.currentUser.id;
     setReactions((previous) => {
@@ -9894,8 +10171,10 @@ function useLongPress(callback, delay = 500) {
     onMouseDown: start,
     onMouseUp: stop,
     onMouseLeave: stop,
+    onPointerCancel: stop,
     onTouchStart: start,
     onTouchEnd: stop,
+    onTouchMove: stop,
     onClick: click
   };
 }
@@ -10125,7 +10404,7 @@ function MessageBubble({
   const isTouch = useMemo(() => isCoarsePointer(), []);
   const messageReactions = reactions[message.id] || {};
   const hasReactions = Object.keys(messageReactions).length > 0;
-  const canReact = message.type !== "system" || currentThread.isBot;
+  const canReact = !currentThread.isBot && message.type !== "system";
 
   function clearHoverTimer() {
     if (hoverTimerRef.current) {
@@ -10370,23 +10649,67 @@ function WorkspaceMemberAccessPanel({
   loading = false,
   canManage = false,
   canBootstrapManage = false,
+  currentUserWorkspaceRole = "member",
   workspaceScope = "both",
   currentUserId = null,
   savingMemberId = null,
+  invitingMember = false,
+  removingMemberId = null,
+  deletingPlatformUserId = null,
   onToggleRole,
   onUpdateWorkspaceAccess,
+  onInviteMember,
+  onRemoveMember,
+  onDeletePlatformUser,
+  onUpdateMemberRole,
   onRefresh
 }) {
   const visibleMembers = members;
-  const workspaceRoleOptions = [
-    { id: "owner", label: "Workspace Owner" },
-    { id: "manager", label: "Workspace Manager" },
-    { id: "member", label: "Workspace Member" }
-  ];
-  const moduleOptions = [
-    { id: "finance", label: "Finance" },
-    { id: "warehouse", label: "Warehouse" }
-  ];
+  const [inviteDraft, setInviteDraft] = useState({
+    name: "",
+    email: "",
+    workspaceRole: "member",
+    modules: [],
+    financeRoles: []
+  });
+  const inviteWorkspaceRoleOptions = currentUserWorkspaceRole === "manager"
+    ? WORKSPACE_BASE_ROLE_OPTIONS.filter((option) => option.id === "member")
+    : WORKSPACE_BASE_ROLE_OPTIONS;
+
+  function buildInviteRolePreset(roleId) {
+    switch (roleId) {
+      case "owner":
+        return { modules: ["finance", "warehouse"], financeRoles: ["viewer", "approver", "finance_staff", "accountant"] };
+      case "manager":
+        return { modules: ["finance", "warehouse"], financeRoles: ["viewer", "approver", "finance_staff"] };
+      case "member":
+      default:
+        return { modules: [], financeRoles: [] };
+    }
+  }
+
+  function toggleInviteModule(moduleId) {
+    setInviteDraft((current) => {
+      const nextModules = current.modules.includes(moduleId)
+        ? current.modules.filter((entry) => entry !== moduleId)
+        : [...current.modules, moduleId];
+
+      return {
+        ...current,
+        modules: nextModules,
+        financeRoles: nextModules.includes("finance") ? current.financeRoles : []
+      };
+    });
+  }
+
+  function toggleInviteFinanceRole(roleId) {
+    setInviteDraft((current) => ({
+      ...current,
+      financeRoles: current.financeRoles.includes(roleId)
+        ? current.financeRoles.filter((entry) => entry !== roleId)
+        : [...current.financeRoles, roleId]
+    }));
+  }
 
   return (
     <div className="space-y-5">
@@ -10409,8 +10732,8 @@ function WorkspaceMemberAccessPanel({
           </h3>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
             {canBootstrapManage
-              ? "As the app owner, you can grant workspace access, choose the first workspace owner or manager, assign module access, and then fine-tune finance roles for each customer account."
-              : "Manage workspace members, assign module access, and keep finance-specific permissions limited to members who need them."}
+              ? "As the app owner, you can enable or disable customer access and toggle each member's workspace roles directly from the badges below."
+              : "Manage workspace members and toggle each teammate's access directly from the role badges below."}
           </p>
         </div>
         {canManage ? (
@@ -10423,6 +10746,134 @@ function WorkspaceMemberAccessPanel({
           </button>
         ) : null}
       </div>
+
+      {canManage && !canBootstrapManage && onInviteMember ? (
+        <div
+          className="rounded-[24px] p-5"
+          style={{
+            border: "1px solid rgba(255,255,255,0.08)",
+            background: "linear-gradient(180deg,#111827 0%,#10192a 100%)",
+            boxShadow: "0 12px 32px rgba(0,0,0,0.28)"
+          }}
+        >
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-400">
+            Team member management
+          </div>
+          <div className="mt-2 text-sm text-slate-400">
+            Invite teammates directly into this workspace, then turn their role badges on or off from the member cards below.
+            {currentUserWorkspaceRole === "manager" ? " Managers can invite members, but only owners can assign owner or manager access." : ""}
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <input
+              value={inviteDraft.name}
+              onChange={(event) => setInviteDraft((current) => ({ ...current, name: event.target.value }))}
+              placeholder="Member name (optional)"
+              className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+            />
+            <input
+              type="email"
+              value={inviteDraft.email}
+              onChange={(event) => setInviteDraft((current) => ({ ...current, email: event.target.value }))}
+              placeholder="member@company.com"
+              className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+            />
+          </div>
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Workspace role</div>
+            <div className="flex flex-wrap gap-2">
+              {inviteWorkspaceRoleOptions.map((option) => {
+                const active = inviteDraft.workspaceRole === option.id;
+                return (
+                  <button
+                    key={`invite-workspace-role-${option.id}`}
+                    type="button"
+                    onClick={() => {
+                      const preset = buildInviteRolePreset(option.id);
+                      setInviteDraft((current) => ({
+                        ...current,
+                        workspaceRole: option.id,
+                        modules: preset.modules,
+                        financeRoles: preset.financeRoles
+                      }));
+                    }}
+                    className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      borderColor: active ? "rgba(96,165,250,0.36)" : "rgba(255,255,255,0.1)",
+                      background: active ? "rgba(96,165,250,0.14)" : "rgba(255,255,255,0.05)",
+                      color: active ? "#60a5fa" : "#cbd5e1"
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Purchased modules</div>
+            <div className="flex flex-wrap gap-2">
+              {PURCHASED_MODULE_OPTIONS.map(([moduleId, label]) => {
+                const active = inviteDraft.modules.includes(moduleId);
+                return (
+                  <button
+                    key={`invite-module-${moduleId}`}
+                    type="button"
+                    onClick={() => toggleInviteModule(moduleId)}
+                    className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                    style={{
+                      borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
+                      background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                      color: active ? "#10b981" : "#cbd5e1"
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {inviteDraft.modules.includes("finance") ? (
+            <div className="mt-4">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Finance roles</div>
+              <div className="flex flex-wrap gap-2">
+                {FINANCE_ACCESS_ROLE_OPTIONS.map(([roleId, label]) => {
+                  const active = inviteDraft.financeRoles.includes(roleId);
+                  return (
+                    <button
+                      key={`invite-finance-role-${roleId}`}
+                      type="button"
+                      onClick={() => toggleInviteFinanceRole(roleId)}
+                      className="rounded-full border px-3 py-1.5 text-xs font-semibold"
+                      style={{
+                        borderColor: active ? "rgba(250,204,21,0.36)" : "rgba(255,255,255,0.1)",
+                        background: active ? "rgba(250,204,21,0.14)" : "rgba(255,255,255,0.05)",
+                        color: active ? "#facc15" : "#cbd5e1"
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-4">
+            <button
+              type="button"
+              disabled={invitingMember}
+              onClick={async () => {
+                const invited = await onInviteMember?.(inviteDraft);
+                if (invited?.id || invited?.membershipId) {
+                  setInviteDraft({ name: "", email: "", workspaceRole: "member", modules: [], financeRoles: [] });
+                }
+              }}
+              className="rounded-[14px] border border-emerald-400/25 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {invitingMember ? "Inviting..." : "Invite member"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {!canManage ? (
         <div
@@ -10443,14 +10894,17 @@ function WorkspaceMemberAccessPanel({
           {visibleMembers.map((member) => {
             const roles = Array.isArray(member.workspaceRoles) ? member.workspaceRoles : [];
             const modules = Array.isArray(member.workspaceModules) ? member.workspaceModules : [];
-            const showFinanceRoleSection =
-              workspaceScope !== "warehouse" && (canBootstrapManage || modules.includes("finance") || roles.length > 0);
-            const roleOptions = [
-              { id: "viewer", label: "Viewer" },
-              { id: "approver", label: "Approver" },
-              { id: "finance_staff", label: "Finance Staff" },
-              { id: "accountant", label: "Accountant" }
-            ];
+            const teamRole = deriveTeamMemberRole(member);
+            const membershipStatusLabel = formatWorkspaceMembershipStatus(member.membershipStatus);
+            const managerLockedTarget =
+              !canBootstrapManage &&
+              currentUserWorkspaceRole === "manager" &&
+              (member.workspaceRole === "owner" || member.workspaceRole === "manager");
+            const roleToggleDisabled =
+              !canManage ||
+              savingMemberId === member.id ||
+              (!canBootstrapManage && (member.id === currentUserId || member.workspaceRole === "owner")) ||
+              managerLockedTarget;
 
             return (
               <div
@@ -10463,15 +10917,15 @@ function WorkspaceMemberAccessPanel({
                 }}
               >
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="text-base font-semibold text-white">
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-base font-semibold text-white">
                       {member.name}
                       {member.id === currentUserId ? " (You)" : ""}
                     </div>
-                    <div className="mt-1 text-sm text-slate-400">{member.email}</div>
+                    <div className="mt-1 truncate text-sm text-slate-400">{member.email}</div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <span
-                        className="rounded-full border px-3 py-1 text-xs font-semibold"
+                        className="max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold"
                         style={{
                           borderColor: "rgba(255,255,255,0.08)",
                           background: member.workspaceEnabled ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
@@ -10481,19 +10935,29 @@ function WorkspaceMemberAccessPanel({
                         {member.workspaceEnabled ? "Workspace enabled" : "Workspace disabled"}
                       </span>
                       <span
-                        className="rounded-full border px-3 py-1 text-xs font-semibold"
+                        className="max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold"
                         style={{
                           borderColor: "rgba(255,255,255,0.08)",
                           background: "rgba(255,255,255,0.05)",
                           color: "#f8fafc"
                         }}
                       >
-                        {member.workspaceRole || "member"}
+                        {formatTeamMemberRoleLabel(teamRole)}
+                      </span>
+                      <span
+                        className="max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold"
+                        style={{
+                          borderColor: "rgba(255,255,255,0.08)",
+                          background: membershipStatusLabel === "active" ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.05)",
+                          color: membershipStatusLabel === "active" ? "#10b981" : "#cbd5e1"
+                        }}
+                      >
+                        {membershipStatusLabel}
                       </span>
                       {(modules.length ? modules : ["no modules"]).map((moduleId) => (
                         <span
                           key={`${member.id}-module-${moduleId}`}
-                          className="rounded-full border px-3 py-1 text-xs font-semibold"
+                          className="max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold"
                           style={{
                             borderColor: "rgba(255,255,255,0.08)",
                             background: "rgba(255,255,255,0.05)",
@@ -10504,27 +10968,25 @@ function WorkspaceMemberAccessPanel({
                         </span>
                       ))}
                     </div>
-                    {showFinanceRoleSection ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {(roles.length ? roles : ["no finance role"]).map((role) => (
-                          <span
-                            key={`${member.id}-${role}`}
-                            className="rounded-full border px-3 py-1 text-xs font-semibold"
-                            style={{
-                              borderColor: "rgba(255,255,255,0.08)",
-                              background: "rgba(255,255,255,0.05)",
-                              color: role === "no finance role" ? "#94a3b8" : "#f8fafc"
-                            }}
-                          >
-                            {role.replace("_", " ")}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(roles.length ? roles : ["no finance role"]).map((role) => (
+                        <span
+                          key={`${member.id}-${role}`}
+                          className="max-w-full truncate rounded-full border px-3 py-1 text-xs font-semibold"
+                          style={{
+                            borderColor: "rgba(255,255,255,0.08)",
+                            background: "rgba(255,255,255,0.05)",
+                            color: role === "no finance role" ? "#94a3b8" : "#f8fafc"
+                          }}
+                        >
+                          {role.replace("_", " ")}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <div className="text-right text-xs text-slate-500">
-                    <div>{member.isAdmin ? "Admin" : member.workspaceRole || "member"}</div>
-                    <div className="mt-1">{member.presenceStatus || "offline"}</div>
+                  <div className="min-w-0 shrink-0 text-right text-xs text-slate-500">
+                    <div className="truncate">{member.isAdmin ? "Platform owner" : formatTeamMemberRoleLabel(member.workspaceRole || "member")}</div>
+                    <div className="mt-1 truncate">{member.presenceStatus || "offline"}</div>
                   </div>
                 </div>
 
@@ -10538,7 +11000,7 @@ function WorkspaceMemberAccessPanel({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Workspace access
+                        Member access
                       </div>
                       <button
                         type="button"
@@ -10555,23 +11017,22 @@ function WorkspaceMemberAccessPanel({
                           color: member.workspaceEnabled ? "#f87171" : "#10b981"
                         }}
                       >
-                        {member.workspaceEnabled ? "Disable workspace" : "Enable workspace"}
+                        {member.workspaceEnabled ? "Disable member" : "Enable member"}
                       </button>
                     </div>
-
-                    <div>
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
                         Workspace role
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {workspaceRoleOptions.map((option) => {
-                          const active = (member.workspaceRole || "") === option.id;
+                        {WORKSPACE_BASE_ROLE_OPTIONS.map((option) => {
+                          const active = String(member.workspaceRole || "member") === option.id;
                           return (
                             <button
                               key={`${member.id}-workspace-role-${option.id}`}
                               type="button"
                               disabled={savingMemberId === member.id}
-                              onClick={() => onUpdateWorkspaceAccess?.(member, { workspaceRole: option.id, workspaceEnabled: true })}
+                              onClick={() => onUpdateWorkspaceAccess?.(member, { workspaceRole: option.id })}
                               className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                               style={{
                                 borderColor: active ? "rgba(96,165,250,0.36)" : "rgba(255,255,255,0.1)",
@@ -10585,26 +11046,122 @@ function WorkspaceMemberAccessPanel({
                         })}
                       </div>
                     </div>
-
-                    <div>
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        Workspace modules
+                    <div className="space-y-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        Purchased modules
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {moduleOptions.map((option) => {
-                          const active = modules.includes(option.id);
-                          const nextModules = active ? modules.filter((entry) => entry !== option.id) : [...modules, option.id];
+                        {PURCHASED_MODULE_OPTIONS.map(([moduleId, label]) => {
+                          const active = modules.includes(moduleId);
                           return (
                             <button
-                              key={`${member.id}-workspace-module-${option.id}`}
+                              key={`${member.id}-workspace-module-${moduleId}`}
                               type="button"
                               disabled={savingMemberId === member.id}
-                              onClick={() =>
+                              onClick={() => {
+                                const nextModules = active
+                                  ? modules.filter((entry) => entry !== moduleId)
+                                  : [...modules, moduleId];
                                 onUpdateWorkspaceAccess?.(member, {
                                   workspaceModules: nextModules,
-                                  workspaceEnabled: true
-                                })
-                              }
+                                  financeRoles: nextModules.includes("finance") ? roles : []
+                                });
+                              }}
+                              className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{
+                                borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
+                                background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
+                                color: active ? "#10b981" : "#cbd5e1"
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    {modules.includes("finance") ? (
+                      <div className="space-y-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          Finance roles
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {FINANCE_ACCESS_ROLE_OPTIONS.map(([roleId, label]) => {
+                            const active = roles.includes(roleId);
+                            return (
+                              <button
+                                key={`${member.id}-finance-role-${roleId}`}
+                                type="button"
+                                disabled={savingMemberId === member.id}
+                                onClick={() => {
+                                  const nextRoles = active
+                                    ? roles.filter((entry) => entry !== roleId)
+                                    : [...roles, roleId];
+                                  onUpdateWorkspaceAccess?.(member, {
+                                    workspaceModules: modules,
+                                    financeRoles: nextRoles
+                                  });
+                                }}
+                                className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{
+                                  borderColor: active ? "rgba(250,204,21,0.36)" : "rgba(255,255,255,0.1)",
+                                  background: active ? "rgba(250,204,21,0.14)" : "rgba(255,255,255,0.05)",
+                                  color: active ? "#facc15" : "#cbd5e1"
+                                }}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {canManage ? (
+                  <div
+                    className="mt-4 space-y-3 rounded-[18px] p-4"
+                    style={{
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      background: "rgba(255,255,255,0.03)"
+                    }}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                        {canBootstrapManage ? "Workspace functions" : "Role toggles"}
+                      </div>
+                      <div className="min-w-0 text-right text-xs text-slate-500">
+                        {member.workspaceRole === "owner"
+                          ? canBootstrapManage
+                            ? "As platform owner, you can still turn this member's workspace functions on or off."
+                            : "Owner access stays fixed until reassigned by the platform owner."
+                          : managerLockedTarget
+                            ? "Only the workspace owner can change owner or manager access."
+                          : member.id === currentUserId
+                            ? canBootstrapManage
+                              ? "As platform owner, you can manage this member directly."
+                              : "You cannot change your own access from here."
+                            : canBootstrapManage
+                              ? "Use the controls above to manage workspace role, modules, and finance access."
+                              : "Green roles are enabled. Click any badge to toggle it."}
+                      </div>
+                    </div>
+                    {canBootstrapManage ? null : (
+                      <div className="flex flex-wrap gap-2">
+                        {TEAM_MEMBER_TOGGLE_ROLE_OPTIONS.map((option) => {
+                          const active = hasTeamMemberRoleEnabled(member, option.id);
+                          const toggleDisabled = roleToggleDisabled || (
+                            !canBootstrapManage &&
+                            currentUserWorkspaceRole === "manager" &&
+                            option.id === "manager"
+                          );
+                          return (
+                            <button
+                              key={`${member.id}-${option.id}`}
+                              type="button"
+                              disabled={toggleDisabled}
+                              onClick={() => onToggleRole?.(member, option.id)}
                               className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
                               style={{
                                 borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
@@ -10617,42 +11174,42 @@ function WorkspaceMemberAccessPanel({
                           );
                         })}
                       </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {showFinanceRoleSection ? (
-                  <div
-                    className="mt-4 space-y-3 rounded-[18px] p-4"
-                    style={{
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      background: "rgba(255,255,255,0.03)"
-                    }}
-                  >
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      Finance roles
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {roleOptions.map((option) => {
-                        const active = roles.includes(option.id);
-                        return (
-                          <button
-                            key={`${member.id}-${option.id}`}
-                            type="button"
-                            disabled={!canManage || savingMemberId === member.id}
-                            onClick={() => onToggleRole?.(member, option.id)}
-                            className="rounded-full border px-3 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
-                            style={{
-                              borderColor: active ? "rgba(16,185,129,0.36)" : "rgba(255,255,255,0.1)",
-                              background: active ? "rgba(16,185,129,0.14)" : "rgba(255,255,255,0.05)",
-                              color: active ? "#10b981" : "#cbd5e1"
-                            }}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    )}
+                    {!canBootstrapManage ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={
+                            removingMemberId === member.id ||
+                            member.id === currentUserId ||
+                            managerLockedTarget
+                          }
+                          onClick={() => onRemoveMember?.(member)}
+                          className="rounded-[14px] border border-rose-400/25 bg-rose-500/10 px-4 py-2.5 text-sm font-semibold text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {removingMemberId === member.id ? "Removing..." : "Remove member"}
+                        </button>
+                      </div>
+                    ) : onDeletePlatformUser ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={deletingPlatformUserId === member.id || member.id === currentUserId}
+                          onClick={() => {
+                            const typedEmail = window.prompt(
+                              `This will permanently delete ${member.email || member.name} from the app.\n\nType the user email to confirm:\n${member.email || ""}`
+                            );
+                            if (typedEmail !== member.email) {
+                              return;
+                            }
+                            onDeletePlatformUser?.(member);
+                          }}
+                          className="rounded-[14px] border border-rose-400/25 bg-rose-500/10 px-4 py-2.5 text-sm font-semibold text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deletingPlatformUserId === member.id ? "Deleting user..." : member.id === currentUserId ? "Current user" : "Delete user"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -10730,7 +11287,7 @@ function WorkspaceAdminOverviewPanel({
               color: "#f8fafc"
             }}
           >
-            {workspace?.name || "Workspace"}
+            <span className="block max-w-full truncate">{workspace?.name || "Workspace"}</span>
           </h3>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
             Keep workspace ownership, module access, and member responsibilities visible from one place without mixing them into daily finance or warehouse actions.
@@ -10779,8 +11336,8 @@ function WorkspaceAdminOverviewPanel({
 
             <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Ownership</div>
-              <div className="mt-2 text-lg font-semibold text-white">{summary.owner?.name || "Unassigned"}</div>
-              <div className="mt-1 text-sm text-slate-400">{summary.owner?.email || "No owner assigned yet"}</div>
+              <div className="mt-2 truncate text-lg font-semibold text-white">{summary.owner?.name || "Unassigned"}</div>
+              <div className="mt-1 truncate text-sm text-slate-400">{summary.owner?.email || "No owner assigned yet"}</div>
             </div>
 
             <div className="rounded-[18px] border border-white/10 bg-white/5 p-4">
@@ -10817,7 +11374,7 @@ function WorkspaceAdminOverviewPanel({
               <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Managers</div>
               <div className="mt-2 text-lg font-semibold text-white">{managers.length}</div>
               <div className="mt-3 space-y-1 text-sm text-slate-400">
-                {managers.length ? managers.slice(0, 3).map((manager) => <div key={manager.id}>{manager.name}</div>) : <div>No managers assigned</div>}
+                {managers.length ? managers.slice(0, 3).map((manager) => <div key={manager.id} className="truncate">{manager.name}</div>) : <div>No managers assigned</div>}
               </div>
             </div>
 
@@ -10854,7 +11411,7 @@ function WorkspaceAdminOverviewPanel({
               </div>
               {accountingEnabledAt ? (
                 <div className="mt-3 rounded-[14px] border border-emerald-400/18 bg-emerald-500/8 px-3 py-3 text-xs leading-5 text-emerald-100">
-                  Accounting coverage begins from this activation point forward. Earlier Finance workflow records remain operational history until an explicit backfill path exists.
+                  Accounting starts tracking from today. Your past invoices and expenses are still saved and visible, but they will not appear in accounting reports unless you import them later.
                 </div>
               ) : null}
               {!accountingEnabled && canEnableAccounting ? (
@@ -10922,7 +11479,7 @@ function WorkspaceAdminOverviewPanel({
                     key={`accountant-${member.id}`}
                     className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200"
                   >
-                    {member.name} · accountant
+                    <span className="block max-w-full truncate">{member.name} · accountant</span>
                   </span>
                 )) : (
                   <span className="text-sm text-slate-400">No accountant members yet.</span>
@@ -10938,24 +11495,54 @@ function WorkspaceAdminOverviewPanel({
 
 function PlatformOwnerProvisioningPanel({
   currentUser = null,
+  platformOwners = [],
+  platformOwnersLoading = false,
   workspaces = [],
   loading = false,
   selectedWorkspaceId = null,
   onSelectWorkspace = null,
+  onRefreshPlatformOwners = null,
   onRefresh = null,
+  onAddPlatformOwner = null,
+  addingPlatformOwner = false,
+  deletingPlatformUserId = null,
+  onDeletePlatformUser = null,
   onCreateWorkspace = null,
   creatingWorkspace = false,
   onProvisionMember = null,
-  provisioningMember = false
+  provisioningMember = false,
+  onDisableWorkspace = null,
+  onEnableWorkspace = null,
+  onDeleteWorkspace = null,
+  workspaceActionId = null,
+  deletingWorkspaceId = null
 }) {
+  const provisioningRoleOptions = WORKSPACE_BASE_ROLE_OPTIONS;
+
+  function buildRolePreset(roleId) {
+    switch (roleId) {
+      case "owner":
+        return { modules: ["finance", "warehouse"], financeRoles: ["viewer", "approver", "finance_staff", "accountant"] };
+      case "manager":
+        return { modules: ["finance", "warehouse"], financeRoles: ["viewer", "approver", "finance_staff"] };
+      case "member":
+        return { modules: [], financeRoles: [] };
+      default:
+        return { modules: [], financeRoles: [] };
+    }
+  }
+
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
   const [customerPassword, setCustomerPassword] = useState("");
-  const [workspaceRole, setWorkspaceRole] = useState("owner");
-  const [modules, setModules] = useState(["finance", "warehouse"]);
-  const [financeRoles, setFinanceRoles] = useState(["approver", "finance_staff"]);
+  const [workspaceRole, setWorkspaceRole] = useState("member");
+  const [modules, setModules] = useState(() => buildRolePreset("member").modules);
+  const [financeRoles, setFinanceRoles] = useState(() => buildRolePreset("member").financeRoles);
+  const [platformOwnerName, setPlatformOwnerName] = useState("");
+  const [platformOwnerEmail, setPlatformOwnerEmail] = useState("");
+  const [platformOwnerPassword, setPlatformOwnerPassword] = useState("");
 
   const selectedWorkspace = useMemo(
     () => workspaces.find((entry) => entry.workspace?.id === selectedWorkspaceId) || null,
@@ -11008,6 +11595,7 @@ function PlatformOwnerProvisioningPanel({
       name: customerName,
       email: customerEmail,
       password: customerPassword,
+      role: workspaceRole,
       workspaceRole,
       modules,
       financeRoles: modules.includes("finance") ? financeRoles : []
@@ -11017,9 +11605,24 @@ function PlatformOwnerProvisioningPanel({
       setCustomerName("");
       setCustomerEmail("");
       setCustomerPassword("");
-      setWorkspaceRole("owner");
-      setModules(["finance", "warehouse"]);
-      setFinanceRoles(["approver", "finance_staff"]);
+      setWorkspaceRole("member");
+      setModules(buildRolePreset("member").modules);
+      setFinanceRoles(buildRolePreset("member").financeRoles);
+    }
+  }
+
+  async function handleAddPlatformOwner(event) {
+    event.preventDefault();
+    const addedOwner = await onAddPlatformOwner?.({
+      name: platformOwnerName,
+      email: platformOwnerEmail,
+      password: platformOwnerPassword
+    });
+
+    if (addedOwner?.user?.id) {
+      setPlatformOwnerName("");
+      setPlatformOwnerEmail("");
+      setPlatformOwnerPassword("");
     }
   }
 
@@ -11053,8 +11656,8 @@ function PlatformOwnerProvisioningPanel({
         </div>
         <div className="rounded-[18px] border border-white/10 bg-white/5 px-4 py-3 text-right">
           <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Signed in as</div>
-          <div className="mt-1 text-sm font-semibold text-white">{currentUser?.name || "Platform owner"}</div>
-          <div className="text-xs text-slate-400">{currentUser?.email || ""}</div>
+          <div className="mt-1 truncate text-sm font-semibold text-white">{currentUser?.name || "Platform owner"}</div>
+          <div className="truncate text-xs text-slate-400">{currentUser?.email || ""}</div>
         </div>
       </div>
 
@@ -11101,11 +11704,11 @@ function PlatformOwnerProvisioningPanel({
                       }}
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-base font-semibold text-white">{entry.workspace?.name || "Workspace"}</div>
-                          <div className="mt-1 text-xs text-slate-400">{entry.workspace?.slug || ""}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-base font-semibold text-white">{entry.workspace?.name || "Workspace"}</div>
+                          <div className="mt-1 truncate text-xs text-slate-400">{entry.workspace?.slug || ""}</div>
                         </div>
-                        <div className="text-right text-xs text-slate-500">
+                        <div className="min-w-0 shrink-0 text-right text-xs text-slate-500">
                           <div>{entry.memberCount || 0} members</div>
                           <div>{entry.suspendedMemberCount || 0} suspended</div>
                         </div>
@@ -11124,9 +11727,14 @@ function PlatformOwnerProvisioningPanel({
                             {moduleId}
                           </span>
                         ))}
+                        {entry.workspace?.disabled ? (
+                          <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-200">
+                            Disabled
+                          </span>
+                        ) : null}
                       </div>
                       <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                        <span className="text-slate-400">{entry.owner?.email || "Owner not assigned"}</span>
+                        <span className="min-w-0 truncate text-slate-400">{entry.owner?.email || "Owner not assigned"}</span>
                         <span className="font-semibold text-emerald-300">{isSelected ? "Selected" : "Select workspace"}</span>
                       </div>
                     </button>
@@ -11138,10 +11746,188 @@ function PlatformOwnerProvisioningPanel({
                 </div>
               )}
             </div>
+
+            {selectedWorkspace ? (
+              <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.03] p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Selected workspace</div>
+                    <div className="mt-1 truncate text-base font-semibold text-white">{selectedWorkspace.workspace?.name || "Workspace"}</div>
+                    <div className="mt-1 break-words text-sm leading-6 text-slate-400">
+                      Disable keeps the workspace record but blocks customer access. Delete permanently removes the workspace and all of its data.
+                    </div>
+                  </div>
+                  <div
+                    className="rounded-full border px-3 py-1 text-xs font-semibold"
+                    style={{
+                      borderColor: selectedWorkspace.workspace?.disabled ? "rgba(245,158,11,0.3)" : "rgba(16,185,129,0.3)",
+                      background: selectedWorkspace.workspace?.disabled ? "rgba(245,158,11,0.1)" : "rgba(16,185,129,0.12)",
+                      color: selectedWorkspace.workspace?.disabled ? "#fbbf24" : "#10b981"
+                    }}
+                  >
+                    {selectedWorkspace.workspace?.disabled ? "Disabled" : "Active"}
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    disabled={workspaceActionId === selectedWorkspace.workspace?.id || deletingWorkspaceId === selectedWorkspace.workspace?.id}
+                    onClick={() =>
+                      selectedWorkspace.workspace?.disabled
+                        ? onEnableWorkspace?.(selectedWorkspace)
+                        : onDisableWorkspace?.(selectedWorkspace)
+                    }
+                    className="rounded-[14px] border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{
+                      borderColor: selectedWorkspace.workspace?.disabled ? "rgba(16,185,129,0.35)" : "rgba(245,158,11,0.35)",
+                      background: selectedWorkspace.workspace?.disabled ? "rgba(16,185,129,0.14)" : "rgba(245,158,11,0.14)",
+                      color: selectedWorkspace.workspace?.disabled ? "#10b981" : "#f59e0b"
+                    }}
+                  >
+                    {workspaceActionId === selectedWorkspace.workspace?.id
+                      ? selectedWorkspace.workspace?.disabled ? "Enabling..." : "Disabling..."
+                      : selectedWorkspace.workspace?.disabled ? "Enable Workspace" : "Disable Workspace"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={workspaceActionId === selectedWorkspace.workspace?.id || deletingWorkspaceId === selectedWorkspace.workspace?.id}
+                    onClick={() => {
+                      const workspaceNameToConfirm = selectedWorkspace.workspace?.name || "";
+                      const typedName = window.prompt(
+                        `This will permanently delete all data for this workspace. This cannot be undone.\n\nType the workspace name to confirm:\n${workspaceNameToConfirm}`
+                      );
+                      if (typedName !== workspaceNameToConfirm) {
+                        return;
+                      }
+                      onDeleteWorkspace?.(selectedWorkspace);
+                    }}
+                    className="rounded-[14px] border border-rose-500/35 bg-rose-500/14 px-4 py-2.5 text-sm font-semibold text-rose-200 transition disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {deletingWorkspaceId === selectedWorkspace.workspace?.id ? "Deleting..." : "Delete Workspace"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
         <div className="space-y-5">
+          <form
+            onSubmit={handleAddPlatformOwner}
+            className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Platform owners</div>
+                <div className="mt-1 text-sm text-slate-400">
+                  Add another platform owner who can manage all customer workspaces and platform-level settings.
+                </div>
+              </div>
+              {onRefreshPlatformOwners ? (
+                <button
+                  type="button"
+                  onClick={onRefreshPlatformOwners}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-slate-200"
+                >
+                  Refresh owners
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {platformOwnersLoading ? (
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  Loading platform owners...
+                </div>
+              ) : platformOwners.length ? (
+                <div className="grid gap-3">
+                  {platformOwners.map((entry) => {
+                    const owner = entry?.user || null;
+                    const isCurrentUser = owner?.id && owner.id === currentUser?.id;
+                    return (
+                      <div
+                        key={owner?.id || owner?.email}
+                        className="flex min-w-0 items-center justify-between gap-3 rounded-[16px] border border-white/10 bg-white/[0.03] px-4 py-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-white">
+                            {owner?.name || "Platform owner"}
+                          </div>
+                          <div className="truncate text-xs text-slate-400">{owner?.email || ""}</div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className="rounded-full border border-emerald-400/25 bg-emerald-500/12 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-200">
+                            {isCurrentUser ? "You" : "Platform owner"}
+                          </div>
+                          {onDeletePlatformUser ? (
+                            <button
+                              type="button"
+                              disabled={isCurrentUser || deletingPlatformUserId === owner?.id}
+                              onClick={() => {
+                                const typedEmail = window.prompt(
+                                  `This will permanently delete ${owner?.email || owner?.name} from the app.\n\nType the user email to confirm:\n${owner?.email || ""}`
+                                );
+                                if (typedEmail !== owner?.email) {
+                                  return;
+                                }
+                                onDeletePlatformUser(owner);
+                              }}
+                              className="rounded-[12px] border border-rose-400/25 bg-rose-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {deletingPlatformUserId === owner?.id ? "Deleting" : isCurrentUser ? "Current user" : "Delete"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-[16px] border border-white/10 bg-white/[0.03] p-4 text-sm text-slate-400">
+                  No platform owners loaded yet.
+                </div>
+              )}
+
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Name (optional for existing user)</span>
+                <input
+                  value={platformOwnerName}
+                  onChange={(event) => setPlatformOwnerName(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="Ayesha Khan"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={platformOwnerEmail}
+                  onChange={(event) => setPlatformOwnerEmail(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="owner@example.com"
+                />
+              </label>
+              <label className="grid gap-2 text-sm text-slate-300">
+                <span>Initial password (required for new user)</span>
+                <input
+                  type="password"
+                  value={platformOwnerPassword}
+                  onChange={(event) => setPlatformOwnerPassword(event.target.value)}
+                  className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none"
+                  placeholder="Temporary password"
+                />
+              </label>
+            </div>
+
+            <button
+              type="submit"
+              disabled={addingPlatformOwner}
+              className="mt-4 rounded-[14px] border border-violet-400/25 bg-violet-500/15 px-4 py-2.5 text-sm font-semibold text-violet-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {addingPlatformOwner ? "Adding platform owner..." : "Add platform owner"}
+            </button>
+          </form>
+
           <form
             onSubmit={handleCreateWorkspace}
             className="rounded-[20px] border border-white/10 bg-white/[0.04] p-4"
@@ -11182,11 +11968,11 @@ function PlatformOwnerProvisioningPanel({
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Provision customer</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Add member</div>
                 <div className="mt-1 text-sm text-slate-400">
                   {selectedWorkspace
-                    ? `Adding a customer to ${selectedWorkspace.workspace?.name || "the selected workspace"}`
-                    : "Create or select a workspace first, then assign the first customer account."}
+                    ? `Add another member to ${selectedWorkspace.workspace?.name || "the selected workspace"} with their base workspace role, then choose modules and finance access below.`
+                    : "Create or select a workspace first, then add members with their own roles."}
                 </div>
               </div>
               {selectedWorkspace ? (
@@ -11229,19 +12015,20 @@ function PlatformOwnerProvisioningPanel({
             </div>
 
             <div className="mt-4">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">First workspace role</div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Member role</div>
               <div className="flex flex-wrap gap-2">
-                {[
-                  ["owner", "Owner"],
-                  ["manager", "Manager"],
-                  ["member", "Member"]
-                ].map(([id, label]) => {
+                {provisioningRoleOptions.map(({ id, label }) => {
                   const active = workspaceRole === id;
                   return (
                     <button
                       key={id}
                       type="button"
-                      onClick={() => setWorkspaceRole(id)}
+                      onClick={() => {
+                        const preset = buildRolePreset(id);
+                        setWorkspaceRole(id);
+                        setModules(preset.modules);
+                        setFinanceRoles(preset.financeRoles);
+                      }}
                       className="rounded-full border px-3 py-1.5 text-xs font-semibold"
                       style={{
                         borderColor: active ? "rgba(96,165,250,0.36)" : "rgba(255,255,255,0.1)",
@@ -11259,10 +12046,7 @@ function PlatformOwnerProvisioningPanel({
             <div className="mt-4">
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Purchased modules</div>
               <div className="flex flex-wrap gap-2">
-                {[
-                  ["finance", "Finance"],
-                  ["warehouse", "Warehouse"]
-                ].map(([id, label]) => {
+                {PURCHASED_MODULE_OPTIONS.map(([id, label]) => {
                   const active = modules.includes(id);
                   return (
                     <button
@@ -11287,12 +12071,7 @@ function PlatformOwnerProvisioningPanel({
               <div className="mt-4">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Finance roles</div>
                 <div className="flex flex-wrap gap-2">
-                  {[
-                    ["viewer", "Viewer"],
-                    ["approver", "Approver"],
-                    ["finance_staff", "Finance Staff"],
-                    ["accountant", "Accountant"]
-                  ].map(([id, label]) => {
+                  {FINANCE_ACCESS_ROLE_OPTIONS.map(([id, label]) => {
                     const active = financeRoles.includes(id);
                     return (
                       <button
@@ -11319,9 +12098,56 @@ function PlatformOwnerProvisioningPanel({
               disabled={!selectedWorkspaceId || provisioningMember}
               className="mt-4 rounded-[14px] border border-sky-400/25 bg-sky-500/15 px-4 py-2.5 text-sm font-semibold text-sky-200 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {provisioningMember ? "Provisioning customer..." : "Create or assign customer"}
+              {provisioningMember ? "Adding member..." : "Add member"}
             </button>
           </form>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkspaceDisabledStatePanel({
+  workspaceName = "Workspace",
+  message = DISABLED_WORKSPACE_MESSAGE,
+  onWorkspaceLogout = null
+}) {
+  return (
+    <div className="flex flex-1 items-center justify-center px-6 py-10">
+      <div
+        className="w-full max-w-2xl rounded-[28px] p-8"
+        style={{
+          border: "1px solid rgba(248,113,113,0.2)",
+          background: "linear-gradient(180deg,#1f2937 0%,#111827 100%)",
+          boxShadow: "0 18px 48px rgba(0,0,0,0.28)"
+        }}
+      >
+        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-300">
+          Workspace unavailable
+        </div>
+        <h3
+          style={{
+            marginTop: 10,
+            fontFamily: '"Sora","Manrope","DM Sans","Segoe UI",sans-serif',
+            fontSize: 28,
+            lineHeight: 1.15,
+            fontWeight: 700,
+            color: "#f8fafc"
+          }}
+        >
+          {workspaceName}
+        </h3>
+        <p className="mt-4 text-base leading-7 text-slate-300">{message}</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          {onWorkspaceLogout ? (
+            <button
+              type="button"
+              onClick={onWorkspaceLogout}
+              className="rounded-[14px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-slate-100"
+            >
+              Logout
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
@@ -11578,7 +12404,7 @@ function WorkspaceOverviewPanel({
       ? {
           id: "finance",
           label: "Finance snapshot",
-          subtitle: "Approvals, overdue work, outstanding balances, and reconciliation pressure.",
+          subtitle: "Approvals, overdue work, outstanding balances, and payment matching pressure.",
           metrics: financeOverviewCards,
           actionLabel: "Open Finance",
           action: () => onNavigate?.({ scope: "finance", tab: "Media" })
@@ -12343,6 +13169,8 @@ function WorkspacePane({
   workspaceSettings = null,
   workspaceSettingsLoading = false,
   onSelectWorkspace = null,
+  platformOwners = [],
+  platformOwnersLoading = false,
   platformWorkspaces = [],
   platformWorkspacesLoading = false,
   selectedPlatformWorkspace = null,
@@ -12352,18 +13180,32 @@ function WorkspacePane({
   platformCreatingWorkspace = false,
   platformProvisioningMember = false,
   platformSavingMemberId = null,
+  platformDeletingUserId = null,
   onSelectPlatformWorkspace = null,
+  onRefreshPlatformOwners = null,
   onRefreshPlatformWorkspaces = null,
   onRefreshPlatformWorkspaceMembers = null,
+  onAddPlatformOwner = null,
+  addingPlatformOwner = false,
+  onDeletePlatformUser = null,
   onCreatePlatformWorkspace = null,
   onProvisionPlatformMember = null,
+  onDisablePlatformWorkspace = null,
+  onEnablePlatformWorkspace = null,
+  onDeletePlatformWorkspace = null,
+  platformWorkspaceActionId = null,
+  platformDeletingWorkspaceId = null,
   financePermissions,
   financeMembers = [],
   financeMembersLoading = false,
   savingFinanceMemberId = null,
+  invitingWorkspaceMember = false,
+  removingWorkspaceMemberId = null,
+  deletingPlatformUserId = null,
   canManageFinanceMembers = false,
   canBootstrapManageFinanceMembers = false,
   onToggleFinanceMemberRole,
+  onTogglePlatformWorkspaceRole = null,
   onUpdateFinanceMemberAccess,
   onRefreshFinanceMembers,
   onRefreshWorkspaceSettings,
@@ -12422,6 +13264,9 @@ function WorkspacePane({
   markingAllWorkspaceNotificationsRead = false,
   onInviteAccountant = null,
   invitingAccountant = false,
+  onInviteWorkspaceMember = null,
+  onRemoveWorkspaceMember = null,
+  onUpdateWorkspaceMemberRole = null,
   setFinanceAccountingState = null
 }) {
   const currentUser = useThreadList().currentUser;
@@ -12910,9 +13755,13 @@ function WorkspacePane({
         return financePermissions?.canCreate;
       }
 
-      return financePermissions?.canView;
+      if (action.id === "open-approvals") {
+        return canManageFinanceMembers || financePermissions?.canApprove || financePermissions?.canCreate;
+      }
+
+      return canManageFinanceMembers || financePermissions?.canView;
     }),
-    [financePermissions]
+    [canManageFinanceMembers, financePermissions]
   );
   useEffect(() => {
     if (!setFinanceAccountingState) {
@@ -12923,10 +13772,33 @@ function WorkspacePane({
 
   const financeAccountingEnabled = financeAccountingState.enabled;
   const financeAccountingEnabledAt = financeAccountingState.enabledAt;
+  const canSeeFinanceReports = Boolean(canManageFinanceMembers || financePermissions?.canView);
+  const canSeeFinanceApprovals = Boolean(canManageFinanceMembers || financePermissions?.canApprove || financePermissions?.canCreate);
+  const canSeeOperationalFinanceSections = Boolean(canManageFinanceMembers || financePermissions?.canCreate);
+  const canSeeAccountingAnalytics =
+    financeAccountingEnabled &&
+    (canManageFinanceMembers || financePermissions?.canCreate || financePermissions?.isAccountant);
+  const financeWorkspaceAccessDescriptor = useMemo(
+    () => describeFinanceWorkspaceAccess(canManageFinanceMembers, financePermissions),
+    [canManageFinanceMembers, financePermissions]
+  );
   const financeSections = useMemo(
     () => {
-      const sections = [...FINANCE_MEDIA_SECTIONS];
-      if (financeAccountingEnabled) {
+      const sections = [];
+      if (canSeeFinanceReports) {
+        sections.push({ id: "reports", label: "Reports" });
+      }
+      if (canSeeOperationalFinanceSections) {
+        sections.push(
+          { id: "invoices", label: "Invoices" },
+          { id: "expenses", label: "Expenses" },
+          { id: "customers", label: "Customers" },
+          { id: "payments", label: "Payments" },
+          { id: "banks", label: "Banking" },
+          { id: "payroll", label: "Payroll" }
+        );
+      }
+      if (canSeeAccountingAnalytics) {
         sections.push({ id: "accounting", label: "Accounting" });
       }
       if (financePermissions?.isAccountant) {
@@ -12934,7 +13806,22 @@ function WorkspacePane({
       }
       return sections;
     },
-    [financeAccountingEnabled, financePermissions?.isAccountant]
+    [canSeeAccountingAnalytics, canSeeFinanceReports, canSeeOperationalFinanceSections, financePermissions?.isAccountant]
+  );
+  const visibleWorkspaceTabs = useMemo(
+    () => FILTER_TABS.filter((tab) => {
+      if (!financeMode) {
+        return true;
+      }
+      if (tab === "Media") {
+        return canSeeFinanceReports;
+      }
+      if (tab === "Links") {
+        return canSeeFinanceApprovals;
+      }
+      return true;
+    }),
+    [canSeeFinanceApprovals, canSeeFinanceReports, financeMode]
   );
   const canManageWarehouseStock =
     workspaceAccessMode !== "real" ||
@@ -13018,10 +13905,30 @@ function WorkspacePane({
   }, [draft]);
 
   useEffect(() => {
-    if (!financeAccountingEnabled && financeSection === "accounting") {
+    if (!canSeeAccountingAnalytics && financeSection === "accounting") {
       setFinanceSection("reports");
     }
-  }, [financeAccountingEnabled, financeSection]);
+  }, [canSeeAccountingAnalytics, financeSection]);
+
+  useEffect(() => {
+    if (!financeMode || !financeSections.length) {
+      return;
+    }
+
+    if (!financeSections.some((section) => section.id === financeSection)) {
+      setFinanceSection(financeSections[0].id);
+    }
+  }, [financeMode, financeSection, financeSections]);
+
+  useEffect(() => {
+    if (!financeMode) {
+      return;
+    }
+
+    if (!visibleWorkspaceTabs.includes(activeTab)) {
+      setActiveTab(visibleWorkspaceTabs[0] || "Chat");
+    }
+  }, [activeTab, financeMode, visibleWorkspaceTabs]);
 
   useEffect(() => {
     if (activeTab !== "Media" && financeSection !== "reports") {
@@ -13568,6 +14475,13 @@ function WorkspacePane({
     setShowQuickActionMenu(false);
 
     if (actionId === "open-approvals") {
+      if (!(canManageFinanceMembers || financePermissions?.canApprove || financePermissions?.canCreate)) {
+        pushToast({
+          title: "Action unavailable",
+          body: "Your current access can review reports, but not the approvals queue."
+        });
+        return;
+      }
       setActiveTab("Links");
       return;
     }
@@ -13786,7 +14700,7 @@ function WorkspacePane({
               {workspaceAccessMode === "real" && onWorkspaceLogout ? (
                 <HeaderAction financeMode onClick={onWorkspaceLogout}>Logout</HeaderAction>
               ) : null}
-              {financePermissions?.canView ? (
+              {canSeeFinanceReports ? (
                 <HeaderAction financeMode onClick={() => setActiveTab("Media")}>📊 Report</HeaderAction>
               ) : null}
               {workspaceAccessMode === "real" && activeWorkspace ? (
@@ -13830,7 +14744,7 @@ function WorkspacePane({
               ) : null}
               {financeQuickActions.length ? (
                 <div className="relative" ref={quickActionMenuRef}>
-                  <HeaderAction financeMode onClick={() => setShowQuickActionMenu((current) => !current)}>⚡ Quick Action ▾</HeaderAction>
+                  <HeaderAction financeMode onClick={() => setShowQuickActionMenu((current) => !current)}>⚡ Quick</HeaderAction>
                   {showQuickActionMenu ? (
                     <QuickActionMenu items={financeQuickActions} onSelect={handleQuickAction} />
                   ) : null}
@@ -13845,6 +14759,33 @@ function WorkspacePane({
             </>
           ) : (
             <>
+              {workspaceAccessMode === "real" && financeWorkspaces.length ? (
+                <label
+                  className="flex items-center gap-2 rounded-2xl border px-3 py-2"
+                  style={{
+                    borderColor: "rgba(148,163,184,0.24)",
+                    background: "rgba(255,255,255,0.72)"
+                  }}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Workspace</span>
+                  {financeWorkspaces.length > 1 ? (
+                    <select
+                      value={activeWorkspace?.id || ""}
+                      onChange={(event) => onSelectWorkspace?.(event.target.value)}
+                      disabled={financeWorkspacesLoading}
+                      className="bg-transparent text-sm font-semibold text-slate-700 outline-none"
+                    >
+                      {financeWorkspaces.map((entry) => (
+                        <option key={entry.workspace.id} value={entry.workspace.id} className="bg-white text-slate-900">
+                          {entry.workspace.name}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-sm font-semibold text-slate-700">{financeWorkspaces[0]?.workspace?.name || activeWorkspace?.name}</span>
+                  )}
+                </label>
+              ) : null}
               {workspaceBotMode && onCloseWorkspace ? <HeaderAction onClick={onCloseWorkspace}>← Close</HeaderAction> : null}
               {workspaceBotMode && workspaceAccessMode === "demo" && onUpgradeToRealWorkspace ? (
                 <HeaderAction onClick={requestRealWorkspaceUpgrade}>Use Real Workspace</HeaderAction>
@@ -13852,13 +14793,6 @@ function WorkspacePane({
               {workspaceBotMode && workspaceAccessMode === "real" && onWorkspaceLogout ? (
                 <HeaderAction onClick={onWorkspaceLogout}>Logout</HeaderAction>
               ) : null}
-              {!workspaceBotMode && activeThread.linkedUserId && onOpenPersonalChat ? (
-                <HeaderAction onClick={() => onOpenPersonalChat(activeThread.linkedUserId)}>
-                  Personal chat
-                </HeaderAction>
-              ) : null}
-              <HeaderAction>Call</HeaderAction>
-              <HeaderAction>Video</HeaderAction>
               {workspaceAccessMode === "real" && activeWorkspace ? (
                 <div className="relative" ref={notificationMenuRef}>
                   <HeaderAction
@@ -13898,8 +14832,6 @@ function WorkspacePane({
               ) : (
                 <HeaderAction>Bell</HeaderAction>
               )}
-              <HeaderAction>Search</HeaderAction>
-              <HeaderAction>Tools</HeaderAction>
             </>
           )}
         </div>
@@ -13911,7 +14843,7 @@ function WorkspacePane({
             style={financeMode ? { borderBottom: "1px solid rgba(255,255,255,0.04)", background: "rgba(6,10,18,0.7)" } : { borderBottom: "1px solid #e2e8f0" }}
           >
             <div className="flex gap-4 py-3">
-            {FILTER_TABS.map((tab) => (
+            {visibleWorkspaceTabs.map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -13941,15 +14873,27 @@ function WorkspacePane({
               {workspaceAccessMode === "real" && canBootstrapManageFinanceMembers ? (
                 <PlatformOwnerProvisioningPanel
                   currentUser={currentUser}
+                  platformOwners={platformOwners}
+                  platformOwnersLoading={platformOwnersLoading}
                   workspaces={platformWorkspaces}
                   loading={platformWorkspacesLoading}
                   selectedWorkspaceId={selectedPlatformWorkspaceId}
                   onSelectWorkspace={onSelectPlatformWorkspace}
+                  onRefreshPlatformOwners={onRefreshPlatformOwners}
                   onRefresh={onRefreshPlatformWorkspaces}
+                  onAddPlatformOwner={onAddPlatformOwner}
+                  addingPlatformOwner={addingPlatformOwner}
+                  deletingPlatformUserId={platformDeletingUserId}
+                  onDeletePlatformUser={onDeletePlatformUser}
                   onCreateWorkspace={onCreatePlatformWorkspace}
                   creatingWorkspace={platformCreatingWorkspace}
                   onProvisionMember={onProvisionPlatformMember}
                   provisioningMember={platformProvisioningMember}
+                  onDisableWorkspace={onDisablePlatformWorkspace}
+                  onEnableWorkspace={onEnablePlatformWorkspace}
+                  onDeleteWorkspace={onDeletePlatformWorkspace}
+                  workspaceActionId={platformWorkspaceActionId}
+                  deletingWorkspaceId={platformDeletingWorkspaceId}
                 />
               ) : null}
               {workspaceAccessMode === "real" && !canBootstrapManageFinanceMembers ? (
@@ -13976,11 +14920,19 @@ function WorkspacePane({
                 loading={canBootstrapManageFinanceMembers ? platformWorkspaceMembersLoading : financeMembersLoading}
                 canManage={canManageFinanceMembers}
                 canBootstrapManage={canBootstrapManageFinanceMembers}
+                currentUserWorkspaceRole={activeWorkspaceMembership?.workspaceRole || "member"}
                 workspaceScope={workspaceScope}
                 currentUserId={currentUser.id}
                 savingMemberId={canBootstrapManageFinanceMembers ? platformSavingMemberId : savingFinanceMemberId}
-                onToggleRole={canBootstrapManageFinanceMembers ? onTogglePlatformFinanceRole : onToggleFinanceMemberRole}
+                invitingMember={invitingWorkspaceMember}
+                removingMemberId={removingWorkspaceMemberId}
+                deletingPlatformUserId={deletingPlatformUserId}
+                onToggleRole={canBootstrapManageFinanceMembers ? onTogglePlatformWorkspaceRole : onToggleFinanceMemberRole}
                 onUpdateWorkspaceAccess={canBootstrapManageFinanceMembers ? onUpdatePlatformMemberAccess : onUpdateFinanceMemberAccess}
+                onInviteMember={canBootstrapManageFinanceMembers ? null : onInviteWorkspaceMember}
+                onRemoveMember={canBootstrapManageFinanceMembers ? null : onRemoveWorkspaceMember}
+                onDeletePlatformUser={canBootstrapManageFinanceMembers ? onDeletePlatformUser : null}
+                onUpdateMemberRole={canBootstrapManageFinanceMembers ? null : onUpdateWorkspaceMemberRole}
                 onRefresh={canBootstrapManageFinanceMembers ? onRefreshPlatformWorkspaceMembers : onRefreshFinanceMembers}
               />
               </div>
@@ -14353,8 +15305,21 @@ function WorkspacePane({
                 <div className="mb-4">
                   <h3 className="text-xl font-bold text-white">Finance workspace</h3>
                   <p className="mt-1 text-sm text-slate-400">
-                    Review workflow pressure, customer records, payments, and accounting only when you need it.
+                    {financeWorkspaceAccessDescriptor.description}
                   </p>
+                </div>
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-[18px] border border-white/8 bg-white/[0.04] px-4 py-3">
+                  <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-200">
+                    {financeWorkspaceAccessDescriptor.label}
+                  </span>
+                  {financeWorkspaceAccessDescriptor.highlights.map((highlight) => (
+                    <span
+                      key={`finance-highlight-${highlight}`}
+                      className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-300"
+                    >
+                      {highlight}
+                    </span>
+                  ))}
                 </div>
                 <div className="workspace-finance-nav mb-6 flex flex-wrap gap-2">
                   {financeSections.map((section) => (
@@ -14541,7 +15506,7 @@ function WorkspacePane({
                     <div className="space-y-6">
                       <FinanceRecordDigest
                         title="Expense workflow"
-                        subtitle="Review expense approvals, reimbursement state, and reconciliation work."
+                        subtitle="Review expense approvals, reimbursement status, and payment matching work."
                         items={filteredExpenseMessages.slice(0, 8)}
                         kind="expense"
                         selectedItemId={selectedExpenseMessage?.id || ""}
@@ -14817,7 +15782,7 @@ function WorkspacePane({
                   <div>
                     <h3 className="text-xl font-bold text-white">Approvals queue</h3>
                     <p className="mt-1 text-sm text-slate-400">
-                      Review what needs a decision, payment, or reconciliation right now.
+                      Review what needs a decision, payment, or payment matching right now.
                     </p>
                   </div>
                   <div
@@ -14944,7 +15909,7 @@ function WorkspacePane({
                     <div>
                       <p className="text-lg font-semibold text-slate-100">All caught up</p>
                       <p className="mt-2 max-w-md text-sm text-slate-400">
-                        There are no pending finance approvals, payments, or reconciliation tasks right now.
+                        There are no pending finance approvals, payments, or payment matching tasks right now.
                       </p>
                     </div>
                   </div>
@@ -18024,9 +18989,13 @@ function useWorkspaceAdminAndPlatformLoaders({
   canManageFinanceMembers,
   realFinanceEnabled,
   pushToast,
+  handleWorkspaceAccessError,
   applyRealWorkspaceConversations,
   setWorkspaceSettings,
   setWorkspaceSettingsLoading,
+  setPlatformOwners,
+  setPlatformOwnersLoading,
+  setPlatformAddingOwner,
   setPlatformWorkspaces,
   setPlatformWorkspacesLoading,
   setSelectedPlatformWorkspaceId,
@@ -18062,6 +19031,9 @@ function useWorkspaceAdminAndPlatformLoaders({
       }
       return settings;
     } catch (error) {
+      if (handleWorkspaceAccessError?.(error, workspaceIdToUse)) {
+        return null;
+      }
       if (options.toastOnSuccess) {
         pushToast({
           title: "Workspace refresh failed",
@@ -18072,7 +19044,7 @@ function useWorkspaceAdminAndPlatformLoaders({
     } finally {
       setWorkspaceSettingsLoading(false);
     }
-  }, [activeWorkspaceId, authToken, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, authToken, handleWorkspaceAccessError, pushToast, realWorkspaceEnabled]);
 
   const loadPlatformWorkspaces = useCallback(async (tokenToUse = authToken) => {
     if (!tokenToUse || !realWorkspaceEnabled || !canBootstrapManageFinanceMembers) {
@@ -18111,6 +19083,30 @@ function useWorkspaceAdminAndPlatformLoaders({
     }
   }, [activeWorkspaceId, authToken, canBootstrapManageFinanceMembers, realWorkspaceEnabled]);
 
+  const loadPlatformOwners = useCallback(async (tokenToUse = authToken) => {
+    if (!tokenToUse || !realWorkspaceEnabled || !canBootstrapManageFinanceMembers) {
+      setPlatformOwners([]);
+      return [];
+    }
+
+    setPlatformOwnersLoading(true);
+    try {
+      const payload = await api.getPlatformOwners(tokenToUse);
+      const nextOwners = Array.isArray(payload?.owners) ? payload.owners : [];
+      setPlatformOwners(nextOwners);
+      return nextOwners;
+    } catch (error) {
+      setPlatformOwners([]);
+      pushToast({
+        title: "Platform owners unavailable",
+        body: error.message || "Unable to load platform owners."
+      });
+      return [];
+    } finally {
+      setPlatformOwnersLoading(false);
+    }
+  }, [authToken, canBootstrapManageFinanceMembers, pushToast, realWorkspaceEnabled]);
+
   const loadPlatformWorkspaceMembers = useCallback(async (tokenToUse = authToken, workspaceIdToUse = selectedPlatformWorkspaceId) => {
     if (!tokenToUse || !realWorkspaceEnabled || !canBootstrapManageFinanceMembers || !workspaceIdToUse) {
       setPlatformWorkspaceMembers([]);
@@ -18145,13 +19141,16 @@ function useWorkspaceAdminAndPlatformLoaders({
       setWorkspaceState((current) => applyRealWorkspaceConversations(current, conversations));
       return conversations;
     } catch (error) {
+      if (handleWorkspaceAccessError?.(error, workspaceIdToUse)) {
+        return null;
+      }
       pushToast({
         title: "Workspace conversations unavailable",
         body: error.message || "Unable to load workspace conversations."
       });
       return null;
     }
-  }, [activeWorkspaceId, authToken, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, authToken, applyRealWorkspaceConversations, handleWorkspaceAccessError, pushToast, realWorkspaceEnabled]);
 
   const loadRealFinanceActivity = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
     if (!tokenToUse || !realFinanceEnabled || !workspaceIdToUse) {
@@ -18163,12 +19162,15 @@ function useWorkspaceAdminAndPlatformLoaders({
       const actions = await api.getFinanceActivity(tokenToUse, { limit: 24 }, workspaceIdToUse);
       setFinanceActivity(actions);
     } catch (error) {
+      if (handleWorkspaceAccessError?.(error, workspaceIdToUse)) {
+        return;
+      }
       pushToast({
         title: "Finance activity unavailable",
         body: error.message || "Unable to load finance activity."
       });
     }
-  }, [activeWorkspaceId, authToken, realFinanceEnabled]);
+  }, [activeWorkspaceId, authToken, handleWorkspaceAccessError, pushToast, realFinanceEnabled]);
 
   const loadFinanceMembers = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
     if (!tokenToUse || !realWorkspaceEnabled || !canManageFinanceMembers || !workspaceIdToUse) {
@@ -18181,6 +19183,9 @@ function useWorkspaceAdminAndPlatformLoaders({
       const members = await api.getWorkspaceMembers(tokenToUse, workspaceIdToUse);
       setFinanceMembers(members);
     } catch (error) {
+      if (handleWorkspaceAccessError?.(error, workspaceIdToUse)) {
+        return;
+      }
       pushToast({
         title: "Workspace members unavailable",
         body: error.message || "Unable to load workspace member access."
@@ -18188,7 +19193,7 @@ function useWorkspaceAdminAndPlatformLoaders({
     } finally {
       setFinanceMembersLoading(false);
     }
-  }, [activeWorkspaceId, authToken, realWorkspaceEnabled, canManageFinanceMembers]);
+  }, [activeWorkspaceId, authToken, canManageFinanceMembers, handleWorkspaceAccessError, realWorkspaceEnabled]);
 
   const handleCreatePlatformWorkspace = useCallback(async (payload) => {
     if (!authToken) {
@@ -18214,6 +19219,31 @@ function useWorkspaceAdminAndPlatformLoaders({
       setPlatformCreatingWorkspace(false);
     }
   }, [authToken, loadPlatformWorkspaces]);
+
+  const handleAddPlatformOwner = useCallback(async (payload) => {
+    if (!authToken) {
+      return null;
+    }
+
+    setPlatformAddingOwner(true);
+    try {
+      const response = await api.addPlatformOwner(authToken, payload);
+      await loadPlatformOwners(authToken);
+      pushToast({
+        title: "Platform owner added",
+        body: `${response.owner?.user?.email || payload.email} can now manage the platform.`
+      });
+      return response.owner || null;
+    } catch (error) {
+      pushToast({
+        title: "Add platform owner failed",
+        body: error.message || "Unable to add the platform owner."
+      });
+      return null;
+    } finally {
+      setPlatformAddingOwner(false);
+    }
+  }, [authToken, loadPlatformOwners, pushToast, setPlatformAddingOwner]);
 
   const handleProvisionPlatformWorkspaceMember = useCallback(async (workspaceId, payload) => {
     if (!authToken || !workspaceId) {
@@ -18249,9 +19279,12 @@ function useWorkspaceAdminAndPlatformLoaders({
     }
 
     setPlatformSavingMemberId(member.id);
+    const optimisticMember = previewPlatformWorkspaceMemberAccess(member, updates);
+    setPlatformWorkspaceMembers((current) => current.map((entry) => (entry.id === member.id ? optimisticMember : entry)));
     try {
+      let response = null;
       if (Object.keys(updates).length === 1 && updates.workspaceEnabled !== undefined) {
-        await api.updatePlatformWorkspaceMemberStatus(
+        response = await api.updatePlatformWorkspaceMemberStatus(
           authToken,
           selectedPlatformWorkspaceId,
           member.id,
@@ -18272,14 +19305,39 @@ function useWorkspaceAdminAndPlatformLoaders({
           payload.modules = updates.workspaceModules;
         }
 
-        await api.updatePlatformWorkspaceMember(authToken, selectedPlatformWorkspaceId, member.id, payload);
+        if (updates.financeRoles !== undefined) {
+          payload.financeRoles = updates.financeRoles;
+        }
+
+        if (updates.workspaceModules !== undefined && !updates.workspaceModules.includes("finance") && updates.financeRoles === undefined) {
+          payload.financeRoles = [];
+        }
+
+        response = await api.updatePlatformWorkspaceMember(authToken, selectedPlatformWorkspaceId, member.id, payload);
       }
+
+      const normalizedUpdatedMember = response?.member
+        ? normalizePlatformWorkspaceMember(response.member)
+        : optimisticMember;
+
+      setPlatformWorkspaceMembers((current) => current.map((entry) => (
+        entry.id === member.id ? normalizedUpdatedMember : entry
+      )));
 
       await Promise.all([
         loadPlatformWorkspaces(authToken),
         loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId)
       ]);
+
+      pushToast({
+        title: "Customer access updated",
+        body:
+          updates.workspaceEnabled !== undefined && Object.keys(updates).length === 1
+            ? `${normalizedUpdatedMember.name} ${updates.workspaceEnabled ? "now has" : "no longer has"} workspace access.`
+            : `${normalizedUpdatedMember.name}'s workspace role and access were updated.`
+      });
     } catch (error) {
+      setPlatformWorkspaceMembers((current) => current.map((entry) => (entry.id === member.id ? member : entry)));
       pushToast({
         title: "Customer access update failed",
         body: error.message || "Unable to update the selected workspace member."
@@ -18287,7 +19345,7 @@ function useWorkspaceAdminAndPlatformLoaders({
     } finally {
       setPlatformSavingMemberId(null);
     }
-  }, [authToken, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+  }, [authToken, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, pushToast, selectedPlatformWorkspaceId]);
 
   const handleTogglePlatformFinanceRole = useCallback(async (member, roleId) => {
     if (!authToken || !selectedPlatformWorkspaceId || !member?.id) {
@@ -18321,11 +19379,13 @@ function useWorkspaceAdminAndPlatformLoaders({
 
   return {
     loadWorkspaceSettings,
+    loadPlatformOwners,
     loadPlatformWorkspaces,
     loadPlatformWorkspaceMembers,
     loadWorkspaceConversations,
     loadRealFinanceActivity,
     loadFinanceMembers,
+    handleAddPlatformOwner,
     handleCreatePlatformWorkspace,
     handleProvisionPlatformWorkspaceMember,
     handleUpdatePlatformMemberAccess,
@@ -18351,8 +19411,10 @@ function useWorkspaceAdminAndPlatformActions({
   setWorkspaceAccountingEnabling,
   setWorkspaceDefaultCurrencySaving,
   setInvitingAccountant,
+  setInvitingWorkspaceMember,
   setSavingFinanceMemberId,
-  setFinanceMembers
+  setFinanceMembers,
+  setRemovingWorkspaceMemberId
 }) {
   const enableWorkspaceAccounting = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
     if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse || workspaceAccountingEnabling) {
@@ -18463,26 +19525,24 @@ function useWorkspaceAdminAndPlatformActions({
   }, [activeWorkspaceId, authToken, loadFinanceMembers, loadWorkspaceSettings, pushToast, realWorkspaceEnabled]);
 
   async function handleToggleFinanceMemberRole(member, roleId) {
-    if (!authToken || !canManageFinanceMembers) {
+    if (!authToken || !canManageFinanceMembers || !activeWorkspaceId || !member?.membershipId) {
       return;
     }
 
-    const currentRoles = Array.isArray(member.workspaceRoles) ? member.workspaceRoles : [];
-    const nextRoles = currentRoles.includes(roleId)
-      ? currentRoles.filter((role) => role !== roleId)
-      : [...currentRoles, roleId];
-
     setSavingFinanceMemberId(member.id);
+    const optimisticMember = toggleWorkspaceMemberRolePreview(member, roleId);
+    setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? optimisticMember : entry)));
     try {
-      const updated = await api.updateFinanceMemberRoles(authToken, member.id, nextRoles, activeWorkspaceId);
+      const updated = await api.toggleWorkspaceMemberRole(authToken, activeWorkspaceId, member.membershipId, roleId);
       setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? updated : entry)));
       pushToast({
-        title: "Finance access updated",
-        body: `${updated.name} now has ${updated.workspaceRoles.length ? updated.workspaceRoles.join(", ").replaceAll("_", " ") : "no finance"} access.`
+        title: "Member access updated",
+        body: `${updated.name} ${hasTeamMemberRoleEnabled(updated, roleId) ? "now has" : "no longer has"} ${formatTeamMemberRoleLabel(roleId).toLowerCase()} access.`
       });
     } catch (error) {
+      setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? member : entry)));
       pushToast({
-        title: "Unable to update finance access",
+        title: "Unable to update member access",
         body: error.message || "Please try again."
       });
     } finally {
@@ -18513,12 +19573,93 @@ function useWorkspaceAdminAndPlatformActions({
     }
   }
 
+  const handleInviteWorkspaceMember = useCallback(async (payload) => {
+    if (!authToken || !activeWorkspaceId || !realWorkspaceEnabled || !canManageFinanceMembers) {
+      return null;
+    }
+
+    setInvitingWorkspaceMember(true);
+    try {
+      const member = await api.inviteWorkspaceMember(authToken, activeWorkspaceId, payload);
+      await Promise.all([
+        loadWorkspaceSettings(authToken, activeWorkspaceId),
+        loadFinanceMembers(authToken, activeWorkspaceId)
+      ]);
+      pushToast({
+        title: "Member invited",
+        body: `${member?.email || payload.email} was added to this workspace as ${String(member?.teamRole || payload.role || "member").replaceAll("_", " ")}.`
+      });
+      return member;
+    } catch (error) {
+      pushToast({
+        title: "Unable to invite member",
+        body: error.message || "Please try again."
+      });
+      return null;
+    } finally {
+      setInvitingWorkspaceMember(false);
+    }
+  }, [activeWorkspaceId, authToken, canManageFinanceMembers, loadFinanceMembers, loadWorkspaceSettings, pushToast, realWorkspaceEnabled]);
+
+  const handleRemoveWorkspaceMember = useCallback(async (member) => {
+    if (!authToken || !activeWorkspaceId || !member?.membershipId || !canManageFinanceMembers) {
+      return;
+    }
+
+    setRemovingWorkspaceMemberId(member.id);
+    try {
+      await api.removeWorkspaceMember(authToken, activeWorkspaceId, member.membershipId);
+      await Promise.all([
+        loadWorkspaceSettings(authToken, activeWorkspaceId),
+        loadFinanceMembers(authToken, activeWorkspaceId)
+      ]);
+      pushToast({
+        title: "Member removed",
+        body: `${member.email || member.name} no longer has access to this workspace.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to remove member",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setRemovingWorkspaceMemberId(null);
+    }
+  }, [activeWorkspaceId, authToken, canManageFinanceMembers, loadFinanceMembers, loadWorkspaceSettings, pushToast]);
+
+  const handleUpdateWorkspaceMemberRole = useCallback(async (member, role) => {
+    if (!authToken || !activeWorkspaceId || !member?.membershipId || !canManageFinanceMembers) {
+      return;
+    }
+
+    setSavingFinanceMemberId(member.id);
+    try {
+      const updated = await api.updateWorkspaceMemberRole(authToken, activeWorkspaceId, member.membershipId, role);
+      setFinanceMembers((current) => current.map((entry) => (entry.id === member.id ? updated : entry)));
+      await loadWorkspaceSettings(authToken, activeWorkspaceId);
+      pushToast({
+        title: "Member role updated",
+        body: `${updated.name} is now assigned as ${String(updated.teamRole || role).replaceAll("_", " ")}.`
+      });
+    } catch (error) {
+      pushToast({
+        title: "Unable to update member role",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setSavingFinanceMemberId(null);
+    }
+  }, [activeWorkspaceId, authToken, canManageFinanceMembers, loadWorkspaceSettings, pushToast]);
+
   return {
     enableWorkspaceAccounting,
     updateWorkspaceDefaultCurrency,
     handleInviteAccountant,
     handleToggleFinanceMemberRole,
-    handleUpdateFinanceMemberAccess
+    handleUpdateFinanceMemberAccess,
+    handleInviteWorkspaceMember,
+    handleRemoveWorkspaceMember,
+    handleUpdateWorkspaceMemberRole
   };
 }
 
@@ -18527,188 +19668,464 @@ const WORKSPACE_TASK_EVENT_KEY = "messenger-mvp-workspace-task-event";
 
 function buildMockWorkspaceState(userRole, currentUserOverride = null) {
   const now = Date.now();
-  const financeMessages = [
+  const isoAt = (daysOffset = 0, hour = 10, minute = 0) => {
+    const value = new Date(now + daysOffset * 86400000);
+    value.setHours(hour, minute, 0, 0);
+    return value.toISOString();
+  };
+  const dateAt = (daysOffset = 0) => isoAt(daysOffset).slice(0, 10);
+  const fakeMembers = [
     {
-      id: uid("msg"),
-      senderId: "financebot",
-      senderName: "FinanceBot",
-      createdAt: new Date(now - 1000 * 60 * 90).toISOString(),
-      type: "invoice",
-      content: "Invoice #INV-301 is waiting for approval.",
-      metadata: {
-        invoiceId: "invoice-301",
-        invoiceNumber: "INV-301",
-        companyName: "Northwind Labs",
-        amount: 12400,
-        currency: "USD",
-        dueDate: "2026-03-12",
-        status: "pending"
-      }
+      id: "member-owner",
+      membershipId: "membership-owner",
+      name: "Abdullah Rahman",
+      email: "abdullah@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "owner",
+      teamRole: "owner",
+      workspaceRoles: ["viewer", "approver", "finance_staff", "accountant"],
+      workspaceModules: ["finance", "warehouse"],
+      presenceStatus: "online",
+      membershipStatus: "active"
     },
     {
-      id: uid("msg"),
-      senderId: "financebot",
-      senderName: "FinanceBot",
-      createdAt: new Date(now - 1000 * 60 * 40).toISOString(),
-      type: "invoice",
-      content: "Invoice #INV-302 is nearly overdue.",
-      metadata: {
-        invoiceId: "invoice-302",
-        invoiceNumber: "INV-302",
-        companyName: "Bluehaven Retail",
-        amount: 8800,
-        currency: "USD",
-        dueDate: "2026-03-11",
-        status: "pending"
-      }
+      id: "member-manager",
+      membershipId: "membership-manager",
+      name: "Sarah Khan",
+      email: "sarah@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "manager",
+      teamRole: "manager",
+      workspaceRoles: ["viewer", "approver", "finance_staff"],
+      workspaceModules: ["finance", "warehouse"],
+      presenceStatus: "online",
+      membershipStatus: "active"
     },
     {
-      id: uid("msg"),
-      senderId: "financebot",
-      senderName: "FinanceBot",
-      createdAt: new Date(now - 1000 * 60 * 22).toISOString(),
-      type: "invoice",
-      content: "Invoice #INV-303 is already overdue.",
-      metadata: {
-        invoiceId: "invoice-303",
-        invoiceNumber: "INV-303",
-        companyName: "Elm Street Supply",
-        amount: 16350,
-        currency: "USD",
-        dueDate: "2026-03-08",
-        status: "overdue"
-      }
+      id: "member-accountant",
+      membershipId: "membership-accountant",
+      name: "Priya Das",
+      email: "priya@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "member",
+      teamRole: "accountant",
+      workspaceRoles: ["accountant"],
+      workspaceModules: ["finance"],
+      presenceStatus: "away",
+      membershipStatus: "active"
+    },
+    {
+      id: "member-warehouse",
+      membershipId: "membership-warehouse",
+      name: "Mike Hasan",
+      email: "mike@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "member",
+      teamRole: "warehouse_staff",
+      workspaceRoles: [],
+      workspaceModules: ["warehouse"],
+      presenceStatus: "online",
+      membershipStatus: "active"
+    },
+    {
+      id: "member-approver",
+      membershipId: "membership-approver",
+      name: "Nadia Karim",
+      email: "nadia@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "member",
+      teamRole: "approver",
+      workspaceRoles: ["approver"],
+      workspaceModules: ["finance"],
+      presenceStatus: "offline",
+      membershipStatus: "active"
+    },
+    {
+      id: "member-viewer",
+      membershipId: "membership-viewer",
+      name: "Omar Ali",
+      email: "omar@acmetrading.co",
+      workspaceEnabled: true,
+      workspaceRole: "member",
+      teamRole: "viewer",
+      workspaceRoles: ["viewer"],
+      workspaceModules: ["finance"],
+      presenceStatus: "offline",
+      membershipStatus: "invited"
     }
   ];
+  const preferredCurrentMember =
+    currentUserOverride
+      ? null
+      : userRole === "owner"
+        ? fakeMembers[0]
+        : userRole === "manager"
+          ? fakeMembers[1]
+          : userRole === "accountant"
+            ? fakeMembers[2]
+            : userRole === "staff"
+              ? fakeMembers[3]
+              : fakeMembers[1];
+  const currentUser = currentUserOverride
+    ? {
+        id: currentUserOverride.id || "me",
+        name: currentUserOverride.name || "Workspace User",
+        email: currentUserOverride.email || "workspace@witch.ai",
+        role: currentUserOverride.role || userRole
+      }
+    : {
+        id: preferredCurrentMember?.id || "member-manager",
+        name: preferredCurrentMember?.name || "Sarah Khan",
+        email: preferredCurrentMember?.email || "sarah@acmetrading.co",
+        role: userRole
+      };
 
-  const warehouseMessages = [
+  const invoices = [
+    { id: "invoice-001", invoiceNumber: "INV-2024-001", companyName: "Tech Solutions Ltd", customer: { id: "customer-1", name: "Tech Solutions Ltd" }, amount: 4800, currency: "USD", dueDate: dateAt(-2), status: "pending", outstandingAmount: 4800, paidAmount: 0, createdAt: isoAt(-12, 9), updatedAt: isoAt(-2, 11) },
+    { id: "invoice-002", invoiceNumber: "INV-2024-002", companyName: "Global Imports", customer: { id: "customer-2", name: "Global Imports" }, amount: 2250, currency: "USD", dueDate: dateAt(2), status: "pending", outstandingAmount: 2250, paidAmount: 0, createdAt: isoAt(-10, 10), updatedAt: isoAt(-1, 13) },
+    { id: "invoice-003", invoiceNumber: "INV-2024-003", companyName: "City Supplies", customer: { id: "customer-3", name: "City Supplies" }, amount: 3100, currency: "USD", dueDate: dateAt(-4), status: "approved", outstandingAmount: 3100, paidAmount: 0, createdAt: isoAt(-9, 10), updatedAt: isoAt(-3, 15), approvedBy: { name: "Sarah Khan" } },
+    { id: "invoice-004", invoiceNumber: "INV-2024-004", companyName: "Harbor Retail", customer: { id: "customer-4", name: "Harbor Retail" }, amount: 1850, currency: "USD", dueDate: dateAt(4), status: "approved", outstandingAmount: 300, paidAmount: 1550, createdAt: isoAt(-7, 11), updatedAt: isoAt(-1, 10), approvedBy: { name: "Nadia Karim" }, payments: [{ id: "payment-004a", amount: 1550, currency: "USD", recordedAt: isoAt(-1, 9), method: "bank_transfer", reference: "BT-4481" }] },
+    { id: "invoice-005", invoiceNumber: "INV-2024-005", companyName: "Metro Services", customer: { id: "customer-5", name: "Metro Services" }, amount: 1450, currency: "USD", dueDate: dateAt(-6), status: "paid", outstandingAmount: 0, paidAmount: 1450, createdAt: isoAt(-15, 9), updatedAt: isoAt(-5, 12), paidAt: isoAt(-5, 12), payments: [{ id: "payment-005a", amount: 1450, currency: "USD", recordedAt: isoAt(-5, 12), method: "card", reference: "CC-2201" }], paidBy: { name: "Priya Das" } },
+    { id: "invoice-006", invoiceNumber: "INV-2024-006", companyName: "Blue Ocean Goods", customer: { id: "customer-6", name: "Blue Ocean Goods" }, amount: 2750, currency: "USD", dueDate: dateAt(-1), status: "paid", outstandingAmount: 0, paidAmount: 2750, createdAt: isoAt(-8, 14), updatedAt: isoAt(-1, 16), paidAt: isoAt(-1, 16), payments: [{ id: "payment-006a", amount: 2750, currency: "USD", recordedAt: isoAt(-1, 16), method: "bank_transfer", reference: "BT-9031" }], paidBy: { name: "Sarah Khan" } },
+    { id: "invoice-007", invoiceNumber: "INV-2024-007", companyName: "Northwind Export", customer: { id: "customer-7", name: "Northwind Export" }, amount: 3600, currency: "USD", dueDate: dateAt(-9), status: "overdue", outstandingAmount: 3600, paidAmount: 0, createdAt: isoAt(-16, 10), updatedAt: isoAt(-2, 14) },
+    { id: "invoice-008", invoiceNumber: "INV-2024-008", companyName: "Acme Internal Ops", customer: { id: "customer-8", name: "Acme Internal Ops" }, amount: 950, currency: "USD", dueDate: dateAt(-3), status: "reconciled", outstandingAmount: 0, paidAmount: 950, createdAt: isoAt(-6, 10), updatedAt: isoAt(0, 9), paidAt: isoAt(-2, 13), payments: [{ id: "payment-008a", amount: 950, currency: "USD", recordedAt: isoAt(-2, 13), method: "cash", reference: "CASH-008" }], paidBy: { name: "Abdullah Rahman" }, reconciledBy: { name: "Priya Das" } }
+  ];
+  const expenses = [
+    { id: "expense-001", amount: 420, currency: "USD", category: "office", vendorName: "Office Pro", note: "Printer toner and stationery restock.", status: "pending_review", createdAt: isoAt(-5, 9), updatedAt: isoAt(-1, 10), expenseDate: dateAt(-5) },
+    { id: "expense-002", amount: 1180, currency: "USD", category: "software", vendorName: "Cloud Services Inc", note: "Quarterly cloud hosting invoice.", status: "pending_review", createdAt: isoAt(-4, 12), updatedAt: isoAt(-1, 11), expenseDate: dateAt(-4) },
+    { id: "expense-003", amount: 260, currency: "USD", category: "shipping", vendorName: "City Courier", note: "Urgent inbound shipment handling.", status: "approved", createdAt: isoAt(-6, 14), updatedAt: isoAt(-2, 10), expenseDate: dateAt(-6), approvedBy: { name: "Sarah Khan" }, approvedAt: isoAt(-2, 10) },
+    { id: "expense-004", amount: 980, currency: "USD", category: "travel", vendorName: "Skyline Travel", note: "Supplier visit and warehouse inspection.", status: "reimbursed", createdAt: isoAt(-9, 10), updatedAt: isoAt(-3, 17), expenseDate: dateAt(-9), approvedBy: { name: "Abdullah Rahman" }, approvedAt: isoAt(-5, 15), reimbursedBy: { name: "Priya Das" }, reimbursedAt: isoAt(-3, 17), reimbursement: { method: "bank_transfer", reference: "RB-4421", note: "Paid with payroll batch" } },
+    { id: "expense-005", amount: 640, currency: "USD", category: "utilities", vendorName: "Power Grid Ltd", note: "Warehouse power bill.", status: "reconciled", createdAt: isoAt(-12, 9), updatedAt: isoAt(-1, 9), expenseDate: dateAt(-12), approvedBy: { name: "Nadia Karim" }, approvedAt: isoAt(-9, 11), reimbursedBy: { name: "Priya Das" }, reimbursedAt: isoAt(-7, 16), reconciledBy: { name: "Priya Das" } }
+  ];
+  const products = [
+    { id: "product-1", name: "Laptop Model X", sku: "ACM-LAP-100", currentStock: 15, minimumStock: 8, reorderThreshold: 8, reorderQuantity: 12, unitCost: 899, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "healthy", updatedAt: isoAt(-1, 15), createdAt: isoAt(-25, 10) },
+    { id: "product-2", name: "Office Chair Pro", sku: "ACM-CHR-220", currentStock: 8, minimumStock: 5, reorderThreshold: 5, reorderQuantity: 10, unitCost: 299, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "healthy", updatedAt: isoAt(-1, 14), createdAt: isoAt(-20, 9) },
+    { id: "product-3", name: "Wireless Mouse", sku: "ACM-MSE-014", currentStock: 3, minimumStock: 6, reorderThreshold: 6, reorderQuantity: 20, unitCost: 45, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "low_stock", updatedAt: isoAt(0, 8), createdAt: isoAt(-18, 12) },
+    { id: "product-4", name: "Monitor 27 inch", sku: "ACM-MON-270", currentStock: 12, minimumStock: 6, reorderThreshold: 6, reorderQuantity: 8, unitCost: 549, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "healthy", updatedAt: isoAt(-2, 16), createdAt: isoAt(-22, 10) },
+    { id: "product-5", name: "USB Hub 7-port", sku: "ACM-HUB-707", currentStock: 2, minimumStock: 5, reorderThreshold: 5, reorderQuantity: 25, unitCost: 35, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "low_stock", updatedAt: isoAt(0, 9), createdAt: isoAt(-14, 10) },
+    { id: "product-6", name: "Standing Desk", sku: "ACM-DSK-500", currentStock: 5, minimumStock: 4, reorderThreshold: 4, reorderQuantity: 6, unitCost: 450, currency: "USD", itemType: "inventory", unit: "units", productStatus: "active", stockSignal: "healthy", updatedAt: isoAt(-3, 13), createdAt: isoAt(-21, 9) }
+  ];
+  const orders = [
+    { id: "shipment-1", orderNumber: "SHIP-2024-014", destination: "Dhaka Central Depot", shipmentType: "outgoing", itemsCount: 4, status: "in_transit", currentStep: 2, estimatedDelivery: dateAt(1), updatedAt: isoAt(0, 11), createdAt: isoAt(-1, 9) },
+    { id: "shipment-2", orderNumber: "SHIP-2024-011", destination: "Chattogram Sales Hub", shipmentType: "outgoing", itemsCount: 2, status: "delayed", currentStep: 2, estimatedDelivery: dateAt(-1), updatedAt: isoAt(-1, 15), createdAt: isoAt(-3, 10) }
+  ];
+  const purchaseOrders = [
     {
-      id: uid("msg"),
-      senderId: "warebot",
-      senderName: "WareBot",
-      createdAt: new Date(now - 1000 * 60 * 65).toISOString(),
-      type: "stock_alert",
-      content: "Stock for Cardboard Boxes is running low.",
-      metadata: {
-        alertId: "alert-1",
-        productId: "product-1",
-        productName: "Cardboard Boxes",
-        sku: "BX-001",
-        currentStock: 12,
-        minimumStock: 40,
-        status: "active",
-        reorderQuantity: 120
-      }
+      id: "po-001",
+      orderNumber: "PO-2024-101",
+      vendorId: "vendor-1",
+      vendorName: "Office Pro",
+      status: "sent",
+      currency: "USD",
+      totalAmount: 1785,
+      expectedDeliveryDate: dateAt(4),
+      notes: "Waiting on mouse and USB hub replenishment.",
+      sentAt: isoAt(-1, 10),
+      createdAt: isoAt(-2, 9),
+      updatedAt: isoAt(-1, 10),
+      lineItems: [
+        { id: "po-001-line-1", itemId: "product-3", itemName: "Wireless Mouse", sku: "ACM-MSE-014", quantity: 15, unitCost: 45, currency: "USD", receivedQuantity: 0, lineTotal: 675, lineTotalWithTax: 675 },
+        { id: "po-001-line-2", itemId: "product-5", itemName: "USB Hub 7-port", sku: "ACM-HUB-707", quantity: 15, unitCost: 35, currency: "USD", receivedQuantity: 0, lineTotal: 525, lineTotalWithTax: 525 },
+        { id: "po-001-line-3", itemId: "product-2", itemName: "Office Chair Pro", sku: "ACM-CHR-220", quantity: 2, unitCost: 299, currency: "USD", receivedQuantity: 0, lineTotal: 598, lineTotalWithTax: 598 }
+      ]
     },
     {
-      id: uid("msg"),
-      senderId: "warebot",
-      senderName: "WareBot",
-      createdAt: new Date(now - 1000 * 60 * 32).toISOString(),
-      type: "stock_alert",
-      content: "Thermal Labels dropped below minimum stock.",
-      metadata: {
-        alertId: "alert-2",
-        productId: "product-2",
-        productName: "Thermal Labels",
-        sku: "LB-204",
-        currentStock: 18,
-        minimumStock: 60,
-        status: "active",
-        reorderQuantity: 200
-      }
-    },
-    {
-      id: uid("msg"),
-      senderId: "warebot",
-      senderName: "WareBot",
-      createdAt: new Date(now - 1000 * 60 * 12).toISOString(),
-      type: "shipment",
-      content: "Shipment ORD-9001 is in transit.",
-      metadata: {
-        orderId: "order-1",
-        orderNumber: "ORD-9001",
-        destination: "Dhaka Central Depot",
-        steps: SHIPMENT_STEPS,
-        currentStep: 2,
-        statusLabel: "In Transit",
-        estimatedDelivery: "2026-03-12"
-      }
+      id: "po-002",
+      orderNumber: "PO-2024-102",
+      vendorId: "vendor-2",
+      vendorName: "Cloud Services Inc",
+      status: "partially_received",
+      currency: "USD",
+      totalAmount: 900,
+      expectedDeliveryDate: dateAt(0),
+      notes: "Standing desk accessories arrived partially.",
+      sentAt: isoAt(-6, 11),
+      receivedAt: isoAt(-1, 14),
+      createdAt: isoAt(-7, 9),
+      updatedAt: isoAt(-1, 14),
+      lineItems: [
+        { id: "po-002-line-1", itemId: "product-6", itemName: "Standing Desk", sku: "ACM-DSK-500", quantity: 2, unitCost: 450, currency: "USD", receivedQuantity: 1, lineTotal: 900, lineTotalWithTax: 900 }
+      ]
     }
   ];
+  const warehouseAlerts = [
+    mapWarehouseAlertRecord({ itemId: "product-3", itemName: "Wireless Mouse", sku: "ACM-MSE-014", currentStock: 3, reorderThreshold: 6, reorderQuantity: 20, warehouseLocation: "Rack B2", unit: "units", unitCost: 45, currency: "USD" }),
+    mapWarehouseAlertRecord({ itemId: "product-5", itemName: "USB Hub 7-port", sku: "ACM-HUB-707", currentStock: 2, reorderThreshold: 5, reorderQuantity: 25, warehouseLocation: "Rack C1", unit: "units", unitCost: 35, currency: "USD" })
+  ];
+  const financeMessages = buildFinanceMessagesFromRecords({ invoices, expenses });
+  const warehouseMessages = buildWarehouseMessagesFromRecords({ products, orders });
+  const abdullahMessages = [
+    { id: uid("msg"), senderId: "member-owner", senderName: "Abdullah Rahman", createdAt: isoAt(0, 8, 35), type: "text", content: "Hey, can you check the latest invoice?" },
+    { id: uid("msg"), senderId: currentUser.id, senderName: currentUser.name, createdAt: isoAt(0, 8, 48), type: "text", content: "On it. I am reviewing the approvals queue now." }
+  ];
+  const sarahMessages = [
+    { id: uid("msg"), senderId: "member-manager", senderName: "Sarah Khan", createdAt: isoAt(-1, 16, 10), type: "text", content: "Expense report approved ✓" },
+    { id: uid("msg"), senderId: currentUser.id, senderName: currentUser.name, createdAt: isoAt(-1, 16, 20), type: "text", content: "Perfect. I will update the cash flow note." }
+  ];
+  const mikeMessages = [
+    { id: uid("msg"), senderId: "member-warehouse", senderName: "Mike Hasan", createdAt: isoAt(0, 9, 5), type: "text", content: "Low stock alert for USB Hub" },
+    { id: uid("msg"), senderId: currentUser.id, senderName: currentUser.name, createdAt: isoAt(0, 9, 18), type: "text", content: "Thanks. I opened a purchase order for replenishment." }
+  ];
+  const generalMessages = [
+    { id: uid("msg"), senderId: "member-owner", senderName: "Abdullah Rahman", createdAt: isoAt(0, 8, 5), type: "text", content: "Morning team. Please share invoice blockers and stock alerts here so everyone sees them." },
+    { id: uid("msg"), senderId: "member-manager", senderName: "Sarah Khan", createdAt: isoAt(0, 8, 22), type: "text", content: "Will do. I will keep finance approvals and urgent follow-ups in this thread." }
+  ];
+  const fakeTasks = [
+    { id: "task-1", title: "Review Q3 invoices", status: "todo", priority: "High", assignee: "Sarah Khan", dueDate: dateAt(-2), note: "Cross-check overdue receivables before the board review." },
+    { id: "task-2", title: "Approve expense reports", status: "doing", priority: "High", assignee: "Abdullah Rahman", dueDate: dateAt(0), note: "Approve travel and software reimbursement requests." },
+    { id: "task-3", title: "Update inventory counts", status: "todo", priority: "Medium", assignee: "Mike Hasan", dueDate: dateAt(2), note: "Recount fast-moving accessories before reorder." },
+    { id: "task-4", title: "Send client proposal", status: "todo", priority: "High", assignee: "", dueDate: dateAt(-1), note: "Draft and send the updated enterprise proposal." },
+    { id: "task-5", title: "Monthly finance review", status: "later", priority: "Medium", assignee: "Sarah Khan", dueDate: dateAt(3), note: "Prepare highlights for month-end review." },
+    { id: "task-6", title: "Reorder office supplies", status: "doing", priority: "Medium", assignee: "Mike Hasan", dueDate: dateAt(0), note: "Submit final PO for chairs, mice, and hubs." }
+  ];
+  const fakeProjects = [
+    {
+      id: "project-demo-1",
+      name: "Q4 Business Review",
+      client: "Acme Trading Co.",
+      type: "Internal review",
+      status: "active",
+      progress: 33,
+      totalTasks: 3,
+      completedTasks: 1,
+      summary: "Cross-functional review of revenue, cash flow, and operational risk.",
+      milestones: [
+        { id: "project-demo-1-m1", title: "Collect finance metrics", weight: 34, done: true },
+        { id: "project-demo-1-m2", title: "Review overdue tasks", weight: 33, done: false },
+        { id: "project-demo-1-m3", title: "Finalize action plan", weight: 33, done: false }
+      ]
+    },
+    {
+      id: "project-demo-2",
+      name: "Warehouse Expansion",
+      client: "Acme Trading Co.",
+      type: "Operations project",
+      status: "active",
+      progress: 50,
+      totalTasks: 2,
+      completedTasks: 1,
+      summary: "Increase shelf capacity and improve inbound receiving flow.",
+      milestones: [
+        { id: "project-demo-2-m1", title: "Finalize layout", weight: 50, done: true },
+        { id: "project-demo-2-m2", title: "Approve vendor quotes", weight: 50, done: false }
+      ]
+    }
+  ];
+  const financeSummary = {
+    workspaceDefaultCurrency: "USD",
+    accountingEnabled: true,
+    accountingEnabledAt: isoAt(0, 9),
+    pendingExpenses: 1,
+    pendingInvoices: 3,
+    dueAttention: 3,
+    outstandingInvoices: 5,
+    outstandingAmount: { USD: 12450 },
+    paidInvoices: 2,
+    paidAmount: { USD: 4200 },
+    overdueInvoices: 2,
+    overdueAmount: { USD: 6700 },
+    recurringInvoices: 0,
+    recurringDueInvoices: 0,
+    reconcileQueue: 2,
+    invoiceStatusBreakdown: {
+      pending: 2,
+      approved: 2,
+      paid: 2,
+      overdue: 1,
+      reconciled: 1
+    },
+    recentPayments: [
+      { id: "payment-006a", invoiceId: "invoice-006", invoiceNumber: "INV-2024-006", customerName: "Blue Ocean Goods", amount: 2750, currency: "USD", recordedAt: isoAt(-1, 16), method: "bank_transfer", reference: "BT-9031", remainingBalance: 0, recordedBy: { name: "Sarah Khan" } },
+      { id: "payment-005a", invoiceId: "invoice-005", invoiceNumber: "INV-2024-005", customerName: "Metro Services", amount: 1450, currency: "USD", recordedAt: isoAt(-5, 12), method: "card", reference: "CC-2201", remainingBalance: 0, recordedBy: { name: "Priya Das" } }
+    ],
+    topCustomersOwed: [
+      { customerId: "customer-1", name: "Tech Solutions Ltd", totalOutstanding: { USD: 4800 } },
+      { customerId: "customer-2", name: "Global Imports", totalOutstanding: { USD: 2250 } },
+      { customerId: "customer-3", name: "City Supplies", totalOutstanding: { USD: 2100 } }
+    ],
+    topVendors: [
+      { vendorId: "vendor-1", name: "Office Pro", totalSpent: { USD: 420 } },
+      { vendorId: "vendor-2", name: "Cloud Services Inc", totalSpent: { USD: 1180 } }
+    ],
+    cashPosition: {
+      totals: { USD: 18750 },
+      accountsCount: 2,
+      lastSyncedAt: isoAt(0, 8, 20)
+    }
+  };
+  const warehouseSummary = {
+    trackedProducts: 6,
+    lowStockItems: 2,
+    reorderAttention: 2,
+    pendingPurchaseOrders: 1,
+    inTransitOrders: 1,
+    deliveredOrders: 0,
+    delayedOrders: 1,
+    incomingShipments: 1,
+    outgoingShipments: 1,
+    productStatusBreakdown: { active: 6, paused: 0, discontinued: 0 },
+    lowStockProducts: products.filter((product) => isWarehouseLowStock(product)),
+    recentShipmentActivity: orders,
+    recentStockMovements: [
+      { id: "movement-1", type: "received", itemName: "Standing Desk", quantity: 1, unit: "units", createdAt: isoAt(-1, 14), actorName: "Mike Hasan" },
+      { id: "movement-2", type: "fulfilled", itemName: "Wireless Mouse", quantity: -4, unit: "units", createdAt: isoAt(0, 10), actorName: "Mike Hasan" }
+    ],
+    warehouseHandoffCues: [
+      { id: "cue-1", title: "USB Hub replenishment is now urgent", detail: "Only 2 units remain and sales requested 10 more for this week." },
+      { id: "cue-2", title: "One shipment is delayed", detail: "The Chattogram handoff needs follow-up before tomorrow morning." }
+    ]
+  };
+  const executionSummary = {
+    trackedTasks: fakeTasks.length,
+    trackedProjects: fakeProjects.length,
+    overdueTasks: 3,
+    dueTodayTasks: 2,
+    inProgressTasks: 2,
+    myTasks: 2,
+    unassignedTasks: 1,
+    activeProjects: 2,
+    projectsNeedingAttention: 1,
+    executionAttention: 5,
+    topOverdueTasks: fakeTasks.filter((task) => ["Review Q3 invoices", "Send client proposal"].includes(task.title)).map((task) => ({ id: task.id, title: task.title, assignee: task.assignee || "Unassigned", dueDate: task.dueDate })),
+    topProjects: fakeProjects.map((project) => ({ id: project.id, name: project.name, status: project.status, overdueTasks: project.id === "project-demo-1" ? 1 : 0 }))
+  };
+  const overviewPressure = {
+    finance: {
+      pendingApprovals: 3,
+      pendingExpenses: 1,
+      overdueInvoices: 2,
+      outstandingAmount: { USD: 12450 },
+      reconcileQueue: 2
+    },
+    warehouse: {
+      lowStock: 2,
+      pendingShipments: 1,
+      needsAttention: 2,
+      pendingPOCount: 1
+    },
+    tasks: {
+      overdue: 3,
+      dueToday: 2,
+      myTasks: 2,
+      unassigned: 1
+    },
+    projects: {
+      withOverdueTasks: 1,
+      active: 2
+    }
+  };
+  const workspaceNotifications = [
+    { id: "demo-notification-1", type: "invoice_approval", title: "Invoice INV-2024-008 needs approval", message: "Review the latest customer invoice before the day ends.", createdAt: isoAt(0, 8, 45), referenceId: "invoice-008", referenceType: "invoice" },
+    { id: "demo-notification-2", type: "task_overdue", title: "Task overdue: Review Q3 invoices", message: "This task is now overdue and still assigned to the manager queue.", createdAt: isoAt(0, 8, 10), referenceId: "task-1", referenceType: "task" },
+    { id: "demo-notification-3", type: "stock_alert", title: "Low stock: Wireless Mouse (3 remaining)", message: "Reorder is recommended before the next outbound shipment.", createdAt: isoAt(0, 9, 2), referenceId: "product-3", referenceType: "product" }
+  ];
+  const financeActivity = [
+    { id: "activity-1", action: "invoice approved", actorName: "Sarah Khan", note: "INV-2024-003 moved into the payment queue.", createdAt: isoAt(-3, 15) },
+    { id: "activity-2", action: "expense approved", actorName: "Abdullah Rahman", note: "Travel expense reimbursement is ready for payment.", createdAt: isoAt(-5, 15) },
+    { id: "activity-3", action: "payment matched", actorName: "Priya Das", note: "INV-2024-008 is fully matched and closed.", createdAt: isoAt(0, 9) }
+  ];
+  const workspace = {
+    id: "workspace-demo-acme",
+    name: "Acme Trading Co.",
+    slug: "acme-trading-co",
+    ownerUserId: "member-owner",
+    defaultCurrency: "USD",
+    accountingEnabled: true,
+    accountingEnabledAt: isoAt(0, 9),
+    status: "active",
+    disabled: false,
+    disabledAt: null,
+    disabledReason: null
+  };
+  const activeMembership = {
+    id: `membership-${currentUser.id}`,
+    workspaceId: workspace.id,
+    userId: currentUser.id,
+    email: currentUser.email,
+    workspaceRole: currentUser.id === "member-owner" ? "owner" : currentUser.id === "member-manager" ? "manager" : "member",
+    teamRole: currentUser.id === "member-owner" ? "owner" : currentUser.id === "member-manager" ? "manager" : currentUser.id === "member-accountant" ? "accountant" : currentUser.id === "member-warehouse" ? "warehouse_staff" : currentUser.id === "member-approver" ? "approver" : "viewer",
+    financeRoles: currentUser.id === "member-owner"
+      ? ["viewer", "approver", "finance_staff", "accountant"]
+      : currentUser.id === "member-manager"
+        ? ["viewer", "approver", "finance_staff"]
+        : currentUser.id === "member-accountant"
+          ? ["accountant"]
+          : currentUser.id === "member-approver"
+            ? ["approver"]
+            : currentUser.id === "member-viewer"
+              ? ["viewer"]
+              : [],
+    modules: currentUser.id === "member-warehouse" ? ["warehouse"] : ["finance", "warehouse"],
+    status: "active",
+    isLegacyFallback: false
+  };
+  const workspaceSettings = {
+    summary: {
+      owner: { id: "member-owner", name: "Abdullah Rahman", email: "abdullah@acmetrading.co" },
+      managers: [{ id: "member-manager", name: "Sarah Khan", email: "sarah@acmetrading.co" }],
+      activeMembers: 5,
+      suspendedMembers: 0,
+      workspaceModules: ["finance", "warehouse"],
+      capabilities: {
+        defaultCurrency: "USD",
+        accountingEnabled: true,
+        accountingEnabledAt: isoAt(0, 9)
+      },
+      usesLegacyFallback: false
+    }
+  };
 
-  const directMessages = [
-    {
-      id: uid("msg"),
-      senderId: "user-2",
-      senderName: "Sarah Khan",
-      createdAt: new Date(now - 1000 * 60 * 18).toISOString(),
-      type: "text",
-      content: "Can you review the finance summary before lunch?"
-    },
-    {
-      id: uid("msg"),
-      senderId: "me",
-      senderName: "You",
-      createdAt: new Date(now - 1000 * 60 * 14).toISOString(),
-      type: "text",
-      content: "Yes. I’ll check pending invoices and reply with notes."
-    }
-  ];
-
-  const opsMessages = [
-    {
-      id: uid("msg"),
-      senderId: "user-3",
-      senderName: "Nayeem Ops",
-      createdAt: new Date(now - 1000 * 60 * 55).toISOString(),
-      type: "text",
-      content: "Warehouse asked for an urgent reorder on packing sleeves."
-    }
-  ];
+  const financeThreadMessages = financeMessages;
+  const warehouseThreadMessages = warehouseMessages;
 
   return {
-    currentUser: currentUserOverride
-      ? {
-          id: currentUserOverride.id || "me",
-          name: currentUserOverride.name || "Workspace User",
-          email: currentUserOverride.email || "workspace@witch.ai",
-          role: currentUserOverride.role || userRole
-        }
-      : {
-          id: "me",
-          name: "Workspace Operator",
-          email: "workspace@local.test",
-          role: userRole
-        },
-    settings: {
-      soundEnabled: true
+    currentUser,
+    settings: { soundEnabled: true },
+    workspace,
+    workspaces: [{ workspace, membership: activeMembership }],
+    activeMembership,
+    workspaceSettings,
+    members: fakeMembers,
+    customers: [
+      { id: "customer-1", name: "Tech Solutions Ltd", status: "active", totalOutstanding: 4800, currency: "USD" },
+      { id: "customer-2", name: "Global Imports", status: "active", totalOutstanding: 2250, currency: "USD" },
+      { id: "customer-3", name: "City Supplies", status: "active", totalOutstanding: 2100, currency: "USD" }
+    ],
+    vendors: [
+      { id: "vendor-1", name: "Office Pro", status: "active", totalSpent: 420, currency: "USD" },
+      { id: "vendor-2", name: "Cloud Services Inc", status: "active", totalSpent: 1180, currency: "USD" }
+    ],
+    invoices,
+    expenses,
+    financeSummary,
+    financeProfitLossReport: {
+      period: "month",
+      normalizedTotals: { grossProfit: 8200 }
     },
-    invoices: [
-      { id: "invoice-301", invoiceNumber: "INV-301", companyName: "Northwind Labs", amount: 12400, currency: "USD", dueDate: "2026-03-12", status: "pending" },
-      { id: "invoice-302", invoiceNumber: "INV-302", companyName: "Bluehaven Retail", amount: 8800, currency: "USD", dueDate: "2026-03-11", status: "pending" },
-      { id: "invoice-303", invoiceNumber: "INV-303", companyName: "Elm Street Supply", amount: 16350, currency: "USD", dueDate: "2026-03-08", status: "overdue" }
-    ],
-    expenses: [
-      { id: "exp-1", amount: 450, currency: "USD", category: "supplies", note: "Packaging tape", createdAt: "2026-03-09" },
-      { id: "exp-2", amount: 1280, currency: "USD", category: "travel", note: "Supplier visit", createdAt: "2026-03-07" },
-      { id: "exp-3", amount: 920, currency: "USD", category: "marketing", note: "Trade fair collateral", createdAt: "2026-03-03" },
-      { id: "exp-4", amount: 2400, currency: "USD", category: "utilities", note: "Warehouse electricity", createdAt: "2026-02-28" }
-    ],
+    financeCashFlowReport: {
+      period: "month",
+      normalizedTotals: { netCashFlow: 5400 }
+    },
+    financeActivity,
     budget: {
       department: "Operations",
       totalAmount: 50000,
       spentAmount: 41200,
       period: "monthly"
     },
-    products: [
-      { id: "product-1", name: "Cardboard Boxes", sku: "BX-001", currentStock: 12, minimumStock: 40, reorderThreshold: 40, reorderQuantity: 120 },
-      { id: "product-2", name: "Thermal Labels", sku: "LB-204", currentStock: 18, minimumStock: 60, reorderThreshold: 60, reorderQuantity: 200 },
-      { id: "product-3", name: "Packing Sleeves", sku: "PS-312", currentStock: 84, minimumStock: 40, reorderThreshold: 40, reorderQuantity: 80 }
-    ],
-    orders: [
-      { id: "order-1", orderNumber: "ORD-9001", destination: "Dhaka Central Depot", status: "in_transit", currentStep: 2, estimatedDelivery: "2026-03-12" }
-    ],
+    products,
+    orders,
+    purchaseOrders,
+    warehouseAlerts,
+    warehouseSummary,
+    warehouseInventoryValueReport: {
+      totals: { USD: 21643 }
+    },
+    executionSummary,
+    overviewPressure,
+    notifications: workspaceNotifications,
+    tasks: fakeTasks,
+    projects: fakeProjects,
     threads: sortThreads([
       {
         id: "financebot",
@@ -18716,10 +20133,10 @@ function buildMockWorkspaceState(userRole, currentUserOverride = null) {
         botType: "finance",
         online: true,
         name: "FinanceBot",
-        preview: messagePreview(financeMessages[financeMessages.length - 1]),
-        unread: 2,
-        updatedAt: financeMessages[financeMessages.length - 1].createdAt,
-        messages: financeMessages,
+        preview: messagePreview(financeThreadMessages[financeThreadMessages.length - 1]),
+        unread: 1,
+        updatedAt: financeThreadMessages[financeThreadMessages.length - 1].createdAt,
+        messages: financeThreadMessages,
         archived: false,
         drafts: false
       },
@@ -18729,38 +20146,157 @@ function buildMockWorkspaceState(userRole, currentUserOverride = null) {
         botType: "warehouse",
         online: true,
         name: "WareBot",
-        preview: messagePreview(warehouseMessages[warehouseMessages.length - 1]),
+        preview: messagePreview(warehouseThreadMessages[warehouseThreadMessages.length - 1]),
         unread: 1,
-        updatedAt: warehouseMessages[warehouseMessages.length - 1].createdAt,
-        messages: warehouseMessages,
+        updatedAt: warehouseThreadMessages[warehouseThreadMessages.length - 1].createdAt,
+        messages: warehouseThreadMessages,
         archived: false,
         drafts: false
       },
       {
-        id: "sarah",
+        id: "workspace-general",
+        kind: "group",
+        isBot: false,
+        isGroup: true,
+        online: true,
+        name: "Workspace General",
+        participantUserIds: fakeMembers.map((member) => member.id),
+        preview: messagePreview(generalMessages[generalMessages.length - 1]),
+        unread: 0,
+        updatedAt: generalMessages[generalMessages.length - 1].createdAt,
+        messages: generalMessages,
+        archived: false,
+        drafts: false
+      },
+      {
+        id: "abdullah-thread",
         isBot: false,
         online: true,
-        name: "Sarah Khan",
-        preview: messagePreview(directMessages[directMessages.length - 1]),
-        unread: 0,
-        updatedAt: directMessages[directMessages.length - 1].createdAt,
-        messages: directMessages,
+        name: "Abdullah Rahman",
+        linkedUserId: "member-owner",
+        linkedUserName: "Abdullah Rahman",
+        linkedUserEmail: "abdullah@acmetrading.co",
+        preview: messagePreview(abdullahMessages[abdullahMessages.length - 1]),
+        unread: 1,
+        updatedAt: abdullahMessages[abdullahMessages.length - 1].createdAt,
+        messages: abdullahMessages,
         archived: false,
         drafts: false
       },
       {
-        id: "ops",
+        id: "sarah-thread",
         isBot: false,
-        online: false,
-        name: "Nayeem Ops",
-        preview: messagePreview(opsMessages[opsMessages.length - 1]),
+        online: true,
+        name: "Sarah (Finance)",
+        linkedUserId: "member-manager",
+        linkedUserName: "Sarah Khan",
+        linkedUserEmail: "sarah@acmetrading.co",
+        preview: messagePreview(sarahMessages[sarahMessages.length - 1]),
+        unread: 0,
+        updatedAt: sarahMessages[sarahMessages.length - 1].createdAt,
+        messages: sarahMessages,
+        archived: false,
+        drafts: false
+      },
+      {
+        id: "mike-thread",
+        isBot: false,
+        online: true,
+        name: "Mike (Warehouse)",
+        linkedUserId: "member-warehouse",
+        linkedUserName: "Mike Hasan",
+        linkedUserEmail: "mike@acmetrading.co",
+        preview: messagePreview(mikeMessages[mikeMessages.length - 1]),
         unread: 1,
-        updatedAt: opsMessages[opsMessages.length - 1].createdAt,
-        messages: opsMessages,
-        archived: true,
+        updatedAt: mikeMessages[mikeMessages.length - 1].createdAt,
+        messages: mikeMessages,
+        archived: false,
         drafts: false
       }
     ])
+  };
+}
+
+function buildMockWorkspaceDemoBundle(userRole, currentUserOverride = null) {
+  const workspaceState = buildMockWorkspaceState(userRole, currentUserOverride);
+  return {
+    workspaceState,
+    activeWorkspace: workspaceState.workspace,
+    activeWorkspaceId: workspaceState.workspace?.id || null,
+    activeWorkspaceMembership: workspaceState.activeMembership,
+    workspaceSettings: workspaceState.workspaceSettings,
+    financeWorkspaces: workspaceState.workspaces || [],
+    financeSummary: workspaceState.financeSummary || null,
+    financeProfitLossReport: workspaceState.financeProfitLossReport || null,
+    financeCashFlowReport: workspaceState.financeCashFlowReport || null,
+    warehouseSummary: workspaceState.warehouseSummary || null,
+    warehouseAlerts: workspaceState.warehouseAlerts || [],
+    warehousePurchaseOrders: workspaceState.purchaseOrders || [],
+    warehouseInventoryValueReport: workspaceState.warehouseInventoryValueReport || null,
+    executionSummary: workspaceState.executionSummary || null,
+    overviewPressure: workspaceState.overviewPressure || null,
+    workspaceNotifications: workspaceState.notifications || [],
+    financeCustomers: workspaceState.customers || [],
+    financeVendors: workspaceState.vendors || [],
+    financeActivity: workspaceState.financeActivity || [],
+    financeMembers: workspaceState.members || []
+  };
+}
+
+function buildRealWorkspaceBootBundle(demoSeed) {
+  const currentUser = demoSeed?.workspaceState?.currentUser || null;
+  const settings = demoSeed?.workspaceState?.settings || { soundEnabled: true };
+
+  return {
+    workspaceState: {
+      currentUser,
+      settings,
+      workspace: null,
+      workspaces: [],
+      activeMembership: null,
+      workspaceSettings: null,
+      members: [],
+      customers: [],
+      vendors: [],
+      invoices: [],
+      expenses: [],
+      financeSummary: null,
+      financeProfitLossReport: null,
+      financeCashFlowReport: null,
+      financeActivity: [],
+      budget: null,
+      products: [],
+      orders: [],
+      purchaseOrders: [],
+      warehouseAlerts: [],
+      warehouseSummary: null,
+      warehouseInventoryValueReport: null,
+      executionSummary: null,
+      overviewPressure: null,
+      notifications: [],
+      tasks: [],
+      projects: [],
+      threads: []
+    },
+    activeWorkspace: null,
+    activeWorkspaceId: null,
+    activeWorkspaceMembership: null,
+    workspaceSettings: null,
+    financeWorkspaces: [],
+    financeSummary: null,
+    financeProfitLossReport: null,
+    financeCashFlowReport: null,
+    warehouseSummary: null,
+    warehouseAlerts: [],
+    warehousePurchaseOrders: [],
+    warehouseInventoryValueReport: null,
+    executionSummary: null,
+    overviewPressure: null,
+    workspaceNotifications: [],
+    financeCustomers: [],
+    financeVendors: [],
+    financeActivity: [],
+    financeMembers: []
   };
 }
 
@@ -18795,8 +20331,10 @@ function mapWorkspaceConversationThread(conversation) {
     id: normalizedThreadId,
     conversationId: conversation.conversationId || null,
     conversationContext: conversation.conversationContext || "workspace",
+    kind: conversation.kind || "direct",
     isWorkspaceConversation: true,
     isBot: Boolean(conversation.isBot),
+    isGroup: Boolean(conversation.isGroup || conversation.kind === "group"),
     botType,
     online: true,
     name: conversation.title || (botType === "finance" ? "FinanceBot" : botType === "warehouse" ? "WareBot" : "Workspace"),
@@ -18886,15 +20424,17 @@ function applyRealWorkspaceConversations(current, conversations) {
       const existingMessages = Array.isArray(thread.messages) ? thread.messages : [];
       const hasIncomingMessages = incomingMessages.length > 0;
       const hasExistingMessages = existingMessages.length > 0;
+      const canReuseExistingMessages =
+        Boolean(thread.conversationId) &&
+        Boolean(nextThread.conversationId) &&
+        thread.conversationId === nextThread.conversationId;
 
-      if (!hasIncomingMessages && hasExistingMessages) {
+      if (!hasIncomingMessages && hasExistingMessages && canReuseExistingMessages) {
         nextThread.messages = existingMessages;
         nextThread.preview = messagePreview(existingMessages[existingMessages.length - 1]);
         nextThread.updatedAt = existingMessages[existingMessages.length - 1].createdAt || thread.updatedAt || nextThread.updatedAt;
       } else if (!hasIncomingMessages) {
-        nextThread.messages = thread.messages || [];
-        nextThread.preview = thread.preview || nextThread.preview;
-        nextThread.updatedAt = thread.updatedAt || nextThread.updatedAt;
+        nextThread.messages = [];
       }
     }
   });
@@ -18941,51 +20481,61 @@ function WorkspaceMessenger({
   preferredWorkspaceUserId = null,
   onOpenPersonalChat = null
 }) {
-  const [workspaceState, setWorkspaceState] = useState(() => buildMockWorkspaceState(userRole, currentUserOverride));
+  const demoSeedRef = useRef(null);
+  if (!demoSeedRef.current) {
+    demoSeedRef.current = buildMockWorkspaceDemoBundle(userRole, currentUserOverride);
+  }
+  const demoSeed = demoSeedRef.current;
+  const initialWorkspaceBundle = useMemo(
+    () => (workspaceMode === "real" && authToken ? buildRealWorkspaceBootBundle(demoSeed) : demoSeed),
+    [authToken, demoSeed, workspaceMode]
+  );
+  const [workspaceState, setWorkspaceState] = useState(() => initialWorkspaceBundle.workspaceState);
   const [activeNav, setActiveNav] = useState("inbox");
   const [filter, setFilter] = useState("inbox");
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("Chat");
   const [draft, setDraft] = useState("");
   const [detailMetric, setDetailMetric] = useState(null);
-  const [activeWorkspace, setActiveWorkspace] = useState(null);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(null);
-  const [activeWorkspaceMembership, setActiveWorkspaceMembership] = useState(null);
-  const [workspaceSettings, setWorkspaceSettings] = useState(null);
+  const [activeWorkspace, setActiveWorkspace] = useState(() => initialWorkspaceBundle.activeWorkspace);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState(() => initialWorkspaceBundle.activeWorkspaceId);
+  const [activeWorkspaceMembership, setActiveWorkspaceMembership] = useState(() => initialWorkspaceBundle.activeWorkspaceMembership);
+  const [workspaceSettings, setWorkspaceSettings] = useState(() => initialWorkspaceBundle.workspaceSettings);
   const [workspaceSettingsLoading, setWorkspaceSettingsLoading] = useState(false);
+  const [workspaceBlockedState, setWorkspaceBlockedState] = useState(null);
   const [workspaceAccountingEnabling, setWorkspaceAccountingEnabling] = useState(false);
   const [workspaceDefaultCurrencySaving, setWorkspaceDefaultCurrencySaving] = useState(false);
   const [invitingAccountant, setInvitingAccountant] = useState(false);
-  const [financeWorkspaces, setFinanceWorkspaces] = useState([]);
+  const [invitingWorkspaceMember, setInvitingWorkspaceMember] = useState(false);
+  const [financeWorkspaces, setFinanceWorkspaces] = useState(() => initialWorkspaceBundle.financeWorkspaces);
   const [financeWorkspacesLoading, setFinanceWorkspacesLoading] = useState(false);
-  const [financeSummary, setFinanceSummary] = useState(null);
+  const [financeSummary, setFinanceSummary] = useState(() => initialWorkspaceBundle.financeSummary);
   const [financeFxRates, setFinanceFxRates] = useState(null);
   const [financeTaxSummary, setFinanceTaxSummary] = useState(null);
-  const [financeProfitLossReport, setFinanceProfitLossReport] = useState(null);
-  const [financeCashFlowReport, setFinanceCashFlowReport] = useState(null);
+  const [financeProfitLossReport, setFinanceProfitLossReport] = useState(() => initialWorkspaceBundle.financeProfitLossReport);
+  const [financeCashFlowReport, setFinanceCashFlowReport] = useState(() => initialWorkspaceBundle.financeCashFlowReport);
   const [financeAgedReceivablesReport, setFinanceAgedReceivablesReport] = useState(null);
   const [financeBalanceSheetReport, setFinanceBalanceSheetReport] = useState(null);
   const [financePayrollRecords, setFinancePayrollRecords] = useState([]);
   const [financeAccountantSummary, setFinanceAccountantSummary] = useState(null);
   const [financeBankAccounts, setFinanceBankAccounts] = useState([]);
   const [financeBankTransactions, setFinanceBankTransactions] = useState({});
-  const [financeAccountingState, setFinanceAccountingState] = useState({
-    enabled: false,
-    enabledAt: null
-  });
+  const [financeAccountingState, setFinanceAccountingState] = useState(() =>
+    resolveFinanceAccountingState(initialWorkspaceBundle.financeSummary, initialWorkspaceBundle.activeWorkspace, initialWorkspaceBundle.workspaceSettings)
+  );
   const financeAccountingPeriodRef = useRef("all");
   const financeWorkspacesRequestIdRef = useRef(0);
   const financeContextRequestIdRef = useRef(0);
   const financeStateRequestIdRef = useRef(0);
   const warehouseStateRequestIdRef = useRef(0);
-  const [warehouseSummary, setWarehouseSummary] = useState(null);
-  const [warehouseAlerts, setWarehouseAlerts] = useState([]);
-  const [warehousePurchaseOrders, setWarehousePurchaseOrders] = useState([]);
-  const [warehouseInventoryValueReport, setWarehouseInventoryValueReport] = useState(null);
-  const [executionSummary, setExecutionSummary] = useState(null);
-  const [overviewPressure, setOverviewPressure] = useState(null);
-  const [workspaceNotifications, setWorkspaceNotifications] = useState([]);
-  const [workspaceNotificationCount, setWorkspaceNotificationCount] = useState(0);
+  const [warehouseSummary, setWarehouseSummary] = useState(() => initialWorkspaceBundle.warehouseSummary);
+  const [warehouseAlerts, setWarehouseAlerts] = useState(() => initialWorkspaceBundle.warehouseAlerts);
+  const [warehousePurchaseOrders, setWarehousePurchaseOrders] = useState(() => initialWorkspaceBundle.warehousePurchaseOrders);
+  const [warehouseInventoryValueReport, setWarehouseInventoryValueReport] = useState(() => initialWorkspaceBundle.warehouseInventoryValueReport);
+  const [executionSummary, setExecutionSummary] = useState(() => initialWorkspaceBundle.executionSummary);
+  const [overviewPressure, setOverviewPressure] = useState(() => initialWorkspaceBundle.overviewPressure);
+  const [workspaceNotifications, setWorkspaceNotifications] = useState(() => initialWorkspaceBundle.workspaceNotifications);
+  const [workspaceNotificationCount, setWorkspaceNotificationCount] = useState(() => initialWorkspaceBundle.workspaceNotifications.length);
   const [workspaceNotificationsLoading, setWorkspaceNotificationsLoading] = useState(false);
   const [markingAllWorkspaceNotificationsRead, setMarkingAllWorkspaceNotificationsRead] = useState(false);
   const overviewRequestIdRef = useRef(0);
@@ -18995,8 +20545,11 @@ function WorkspaceMessenger({
   const [projectLinkOptions, setProjectLinkOptions] = useState([]);
   const [projectLinkOptionsLoading, setProjectLinkOptionsLoading] = useState(false);
   const [projectLinkSubmitting, setProjectLinkSubmitting] = useState(false);
-  const [financeCustomers, setFinanceCustomers] = useState([]);
-  const [financeVendors, setFinanceVendors] = useState([]);
+  const [financeCustomers, setFinanceCustomers] = useState(() => initialWorkspaceBundle.financeCustomers);
+  const [financeVendors, setFinanceVendors] = useState(() => initialWorkspaceBundle.financeVendors);
+  const [platformOwners, setPlatformOwners] = useState([]);
+  const [platformOwnersLoading, setPlatformOwnersLoading] = useState(false);
+  const [platformAddingOwner, setPlatformAddingOwner] = useState(false);
   const [platformWorkspaces, setPlatformWorkspaces] = useState([]);
   const [platformWorkspacesLoading, setPlatformWorkspacesLoading] = useState(false);
   const [selectedPlatformWorkspaceId, setSelectedPlatformWorkspaceId] = useState(null);
@@ -19005,10 +20558,14 @@ function WorkspaceMessenger({
   const [platformCreatingWorkspace, setPlatformCreatingWorkspace] = useState(false);
   const [platformProvisioningMember, setPlatformProvisioningMember] = useState(false);
   const [platformSavingMemberId, setPlatformSavingMemberId] = useState(null);
-  const [financeActivity, setFinanceActivity] = useState([]);
-  const [financeMembers, setFinanceMembers] = useState([]);
+  const [platformWorkspaceActionId, setPlatformWorkspaceActionId] = useState(null);
+  const [platformDeletingWorkspaceId, setPlatformDeletingWorkspaceId] = useState(null);
+  const [platformDeletingUserId, setPlatformDeletingUserId] = useState(null);
+  const [financeActivity, setFinanceActivity] = useState(() => initialWorkspaceBundle.financeActivity);
+  const [financeMembers, setFinanceMembers] = useState(() => initialWorkspaceBundle.financeMembers);
   const [financeMembersLoading, setFinanceMembersLoading] = useState(false);
   const [savingFinanceMemberId, setSavingFinanceMemberId] = useState(null);
+  const [removingWorkspaceMemberId, setRemovingWorkspaceMemberId] = useState(null);
   const [downloadingInvoicePdfId, setDownloadingInvoicePdfId] = useState(null);
   const [toasts, setToasts] = useState([]);
   const [reactions, setReactions] = useState({});
@@ -19036,6 +20593,49 @@ function WorkspaceMessenger({
       dismissToast(nextToast.id);
     }, 4000);
   }, [dismissToast]);
+  const handleWorkspaceAccessError = useCallback((error, workspaceIdToUse = activeWorkspaceId) => {
+    if (!isDisabledWorkspaceError(error)) {
+      if (!isWorkspaceAccessDeniedError(error)) {
+        return false;
+      }
+
+      setActiveWorkspace(null);
+      setActiveWorkspaceId(null);
+      setActiveWorkspaceMembership(null);
+      setWorkspaceSettings(null);
+      setWorkspaceBlockedState(null);
+      setFinanceMembers([]);
+      setFinanceActivity([]);
+      setFinanceSummary(null);
+      setWarehouseSummary(null);
+      setWarehouseAlerts([]);
+      setWarehousePurchaseOrders([]);
+      setExecutionSummary(null);
+      setWorkspaceNotifications([]);
+      setWorkspaceNotificationCount(0);
+      pushToast({
+        title: "Workspace access removed",
+        body: "You no longer have access to that workspace. Select another workspace to continue."
+      });
+      return true;
+    }
+
+    setWorkspaceBlockedState({
+      workspaceId: workspaceIdToUse || null,
+      message: DISABLED_WORKSPACE_MESSAGE
+    });
+    setWorkspaceSettings(null);
+    setFinanceMembers([]);
+    setFinanceActivity([]);
+    setFinanceSummary(null);
+    setWarehouseSummary(null);
+    setWarehouseAlerts([]);
+    setWarehousePurchaseOrders([]);
+    setExecutionSummary(null);
+    setWorkspaceNotifications([]);
+    setWorkspaceNotificationCount(0);
+    return true;
+  }, [activeWorkspaceId, pushToast]);
   const realWorkspaceEnabled = workspaceMode === "real" && Boolean(authToken);
   const activeWorkspaceModules = useMemo(
     () => (Array.isArray(activeWorkspaceMembership?.modules) ? activeWorkspaceMembership.modules : []),
@@ -19130,17 +20730,34 @@ function WorkspaceMessenger({
     () => platformWorkspaces.find((entry) => entry.workspace?.id === selectedPlatformWorkspaceId) || null,
     [platformWorkspaces, selectedPlatformWorkspaceId]
   );
+  const blockedWorkspaceName = useMemo(() => {
+    if (!workspaceBlockedState?.workspaceId) {
+      return activeWorkspace?.name || "Workspace";
+    }
+
+    const matchingWorkspace = financeWorkspaces.find((entry) => entry.workspace?.id === workspaceBlockedState.workspaceId);
+    return matchingWorkspace?.workspace?.name || activeWorkspace?.name || "Workspace";
+  }, [activeWorkspace?.name, financeWorkspaces, workspaceBlockedState?.workspaceId]);
+  const activeWorkspaceIsKnown = useMemo(
+    () => financeWorkspaces.some((entry) => entry.workspace?.id === activeWorkspaceId),
+    [activeWorkspaceId, financeWorkspaces]
+  );
+  const selectedPlatformWorkspaceIsKnown = useMemo(
+    () => platformWorkspaces.some((entry) => entry.workspace?.id === selectedPlatformWorkspaceId),
+    [platformWorkspaces, selectedPlatformWorkspaceId]
+  );
   const [activeThreadId, setActiveThreadId] = useState(() => {
-    const initialState = buildMockWorkspaceState(userRole, currentUserOverride);
+    const initialState = initialWorkspaceBundle.workspaceState;
     const requestedThread = initialThreadId
       ? initialState.threads.find(
           (thread) => thread.id === initialThreadId && canSeeThread(thread, userRole, effectiveWorkspaceScope, workspaceMode)
         )
       : null;
     const fallback = initialState.threads.find((thread) => canSeeThread(thread, userRole, effectiveWorkspaceScope, workspaceMode));
-    return requestedThread?.id || fallback?.id || "financebot";
+    return requestedThread?.id || fallback?.id || null;
   });
   const preferredWorkspaceUserAppliedRef = useRef(null);
+  const realWorkspaceBootResetRef = useRef(false);
 
   const readStoredWorkspaceSelection = useCallback(() => {
     if (typeof window === "undefined") {
@@ -19236,6 +20853,7 @@ function WorkspaceMessenger({
         if (requestId !== financeContextRequestIdRef.current) {
           return null;
         }
+        setWorkspaceBlockedState(null);
         setActiveWorkspace(context.workspace || null);
         setActiveWorkspaceMembership(context.membership || null);
         if (context.workspace?.id) {
@@ -19244,6 +20862,9 @@ function WorkspaceMessenger({
         return context;
       } catch (error) {
         if (requestId !== financeContextRequestIdRef.current) {
+          return null;
+        }
+        if (handleWorkspaceAccessError(error, workspaceIdToUse)) {
           return null;
         }
         if (options.toastOnError) {
@@ -19255,17 +20876,19 @@ function WorkspaceMessenger({
         return null;
       }
     },
-    [activeWorkspaceId, authToken, realWorkspaceEnabled]
+    [activeWorkspaceId, authToken, handleWorkspaceAccessError, realWorkspaceEnabled]
   );
 
 
   const {
     loadWorkspaceSettings,
+    loadPlatformOwners,
     loadPlatformWorkspaces,
     loadPlatformWorkspaceMembers,
     loadWorkspaceConversations,
     loadRealFinanceActivity,
     loadFinanceMembers,
+    handleAddPlatformOwner,
     handleCreatePlatformWorkspace,
     handleProvisionPlatformWorkspaceMember,
     handleUpdatePlatformMemberAccess,
@@ -19279,9 +20902,13 @@ function WorkspaceMessenger({
     canManageFinanceMembers,
     realFinanceEnabled,
     pushToast,
+    handleWorkspaceAccessError,
     applyRealWorkspaceConversations,
     setWorkspaceSettings,
     setWorkspaceSettingsLoading,
+    setPlatformOwners,
+    setPlatformOwnersLoading,
+    setPlatformAddingOwner,
     setPlatformWorkspaces,
     setPlatformWorkspacesLoading,
     setSelectedPlatformWorkspaceId,
@@ -19313,6 +20940,9 @@ function WorkspaceMessenger({
       setOverviewPressure(overview);
       return overview;
     } catch (error) {
+      if (handleWorkspaceAccessError(error, workspaceIdToUse)) {
+        return null;
+      }
       if (options.toastOnError) {
         pushToast({
           title: "Overview unavailable",
@@ -19323,7 +20953,7 @@ function WorkspaceMessenger({
       }
       return null;
     }
-  }, [activeWorkspaceId, authToken, pushToast, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, authToken, handleWorkspaceAccessError, pushToast, realWorkspaceEnabled]);
 
   const loadRealFinanceState = useCallback(async (tokenToUse = authToken, options = {}, workspaceIdOverride = activeWorkspaceId) => {
     if (!tokenToUse || !realFinanceEnabled) {
@@ -19446,6 +21076,9 @@ function WorkspaceMessenger({
 
       return true;
     } catch (error) {
+      if (handleWorkspaceAccessError(error, workspaceIdOverride || activeWorkspaceId)) {
+        return false;
+      }
       if (options.toastOnSuccess || options.toastOnError) {
         pushToast({
           title: options.toastOnSuccess ? "Finance refresh failed" : "Finance sync failed",
@@ -19456,7 +21089,7 @@ function WorkspaceMessenger({
       }
       return false;
     }
-  }, [activeWorkspaceId, authToken, financePermissions?.isAccountant, loadFinanceContext, loadFinanceWorkspaces, loadWorkspaceConversations, loadWorkspaceOverview, loadWorkspaceSettings, realFinanceEnabled]);
+  }, [activeWorkspaceId, authToken, financePermissions?.isAccountant, handleWorkspaceAccessError, loadFinanceContext, loadFinanceWorkspaces, loadWorkspaceConversations, loadWorkspaceOverview, loadWorkspaceSettings, realFinanceEnabled]);
 
   const loadFinanceTaxSummary = useCallback(async (options = {}, tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
     if (!tokenToUse || !realFinanceEnabled || !workspaceIdToUse) {
@@ -19720,6 +21353,9 @@ function WorkspaceMessenger({
 
       return true;
     } catch (error) {
+      if (handleWorkspaceAccessError(error, workspaceIdOverride || activeWorkspaceId)) {
+        return false;
+      }
       if (options.toastOnSuccess || options.toastOnError) {
         pushToast({
           title: options.toastOnSuccess ? "Warehouse refresh failed" : "Warehouse sync failed",
@@ -19730,7 +21366,7 @@ function WorkspaceMessenger({
       }
       return false;
     }
-  }, [activeWorkspaceId, authToken, financeModuleAvailable, loadFinanceContext, loadFinanceWorkspaces, loadWorkspaceConversations, loadWorkspaceOverview, loadWorkspaceSettings, realWarehouseEnabled]);
+  }, [activeWorkspaceId, authToken, financeModuleAvailable, handleWorkspaceAccessError, loadFinanceContext, loadFinanceWorkspaces, loadWorkspaceConversations, loadWorkspaceOverview, loadWorkspaceSettings, realWarehouseEnabled]);
 
   const loadWarehouseProductMovementReview = useCallback(async (productId, tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId) => {
     if (!tokenToUse || !workspaceIdToUse || !productId || !realWarehouseEnabled) {
@@ -19760,6 +21396,9 @@ function WorkspaceMessenger({
       void loadWorkspaceOverview(tokenToUse, workspaceIdToUse);
       return summary;
     } catch (error) {
+      if (handleWorkspaceAccessError(error, workspaceIdToUse)) {
+        return null;
+      }
       if (options.toastOnError) {
         pushToast({
           title: "Execution summary unavailable",
@@ -19770,7 +21409,7 @@ function WorkspaceMessenger({
       }
       return null;
     }
-  }, [activeWorkspaceId, authToken, loadWorkspaceOverview, pushToast, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, authToken, handleWorkspaceAccessError, loadWorkspaceOverview, pushToast, realWorkspaceEnabled]);
 
   const loadWorkspaceNotifications = useCallback(async (tokenToUse = authToken, workspaceIdToUse = activeWorkspaceId, options = {}) => {
     if (!tokenToUse || !realWorkspaceEnabled || !workspaceIdToUse) {
@@ -19797,6 +21436,9 @@ function WorkspaceMessenger({
       setWorkspaceNotifications(Array.isArray(listPayload?.notifications) ? listPayload.notifications : []);
       return listPayload;
     } catch (error) {
+      if (handleWorkspaceAccessError(error, workspaceIdToUse)) {
+        return null;
+      }
       if (options.toastOnError) {
         pushToast({
           title: "Notifications unavailable",
@@ -19811,7 +21453,7 @@ function WorkspaceMessenger({
         setWorkspaceNotificationsLoading(false);
       }
     }
-  }, [activeWorkspaceId, authToken, pushToast, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, authToken, handleWorkspaceAccessError, pushToast, realWorkspaceEnabled]);
 
 
   const {
@@ -19852,7 +21494,10 @@ function WorkspaceMessenger({
     updateWorkspaceDefaultCurrency,
     handleInviteAccountant,
     handleToggleFinanceMemberRole,
-    handleUpdateFinanceMemberAccess
+    handleUpdateFinanceMemberAccess,
+    handleInviteWorkspaceMember,
+    handleRemoveWorkspaceMember,
+    handleUpdateWorkspaceMemberRole
   } = useWorkspaceAdminAndPlatformActions({
     authToken,
     activeWorkspaceId,
@@ -19871,16 +21516,174 @@ function WorkspaceMessenger({
     setWorkspaceAccountingEnabling,
     setWorkspaceDefaultCurrencySaving,
     setInvitingAccountant,
+    setInvitingWorkspaceMember,
     setSavingFinanceMemberId,
-    setFinanceMembers
+    setFinanceMembers,
+    setRemovingWorkspaceMemberId
   });
+
+  const handleTogglePlatformWorkspaceRole = useCallback(async (member, roleId) => {
+    if (!authToken || !selectedPlatformWorkspaceId || !member?.membershipId) {
+      return;
+    }
+
+    setPlatformSavingMemberId(member.id);
+    const optimisticMember = toggleWorkspaceMemberRolePreview(member, roleId);
+    setPlatformWorkspaceMembers((current) => current.map((entry) => (entry.id === member.id ? optimisticMember : entry)));
+
+    try {
+      const updated = await api.toggleWorkspaceMemberRole(authToken, selectedPlatformWorkspaceId, member.membershipId, roleId);
+      setPlatformWorkspaceMembers((current) => current.map((entry) => (entry.id === member.id ? updated : entry)));
+      await loadPlatformWorkspaces(authToken);
+      pushToast({
+        title: "Customer role updated",
+        body: `${updated.name} ${hasTeamMemberRoleEnabled(updated, roleId) ? "now has" : "no longer has"} ${formatTeamMemberRoleLabel(roleId).toLowerCase()} access.`
+      });
+    } catch (error) {
+      setPlatformWorkspaceMembers((current) => current.map((entry) => (entry.id === member.id ? member : entry)));
+      pushToast({
+        title: "Unable to update customer role",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setPlatformSavingMemberId(null);
+    }
+  }, [authToken, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+
+  const handleSetPlatformWorkspaceDisabled = useCallback(async (workspaceEntry, disabled) => {
+    const workspaceId = workspaceEntry?.workspace?.id || workspaceEntry?.id || selectedPlatformWorkspaceId;
+    if (!authToken || !workspaceId) {
+      return;
+    }
+
+    setPlatformWorkspaceActionId(workspaceId);
+    try {
+      if (disabled) {
+        await api.disableWorkspace(authToken, workspaceId, "Disabled by platform owner");
+      } else {
+        await api.enableWorkspace(authToken, workspaceId);
+      }
+
+      await Promise.all([
+        loadPlatformWorkspaces(authToken),
+        loadPlatformWorkspaceMembers(authToken, workspaceId),
+        workspaceId === activeWorkspaceId ? loadFinanceWorkspaces(authToken, { toastOnError: false }) : Promise.resolve(null)
+      ]);
+
+      if (workspaceId === activeWorkspaceId) {
+        await loadFinanceContext(authToken, workspaceId, { toastOnError: false });
+      }
+
+      pushToast({
+        title: disabled ? "Workspace disabled" : "Workspace enabled",
+        body: `${workspaceEntry?.workspace?.name || "Workspace"} was ${disabled ? "disabled" : "enabled"} successfully.`
+      });
+    } catch (error) {
+      pushToast({
+        title: disabled ? "Unable to disable workspace" : "Unable to enable workspace",
+        body: error.message || "Please try again."
+      });
+    } finally {
+      setPlatformWorkspaceActionId(null);
+    }
+  }, [activeWorkspaceId, authToken, loadFinanceContext, loadFinanceWorkspaces, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+
+  const handleDeletePlatformWorkspace = useCallback(async (workspaceEntry) => {
+    const workspaceId = workspaceEntry?.workspace?.id || selectedPlatformWorkspaceId;
+    if (!authToken || !workspaceId) {
+      return false;
+    }
+
+    setPlatformDeletingWorkspaceId(workspaceId);
+    try {
+      const payload = await api.deleteWorkspace(authToken, workspaceId);
+
+      setPlatformWorkspaceMembers((current) =>
+        workspaceId === selectedPlatformWorkspaceId ? [] : current
+      );
+      setSelectedPlatformWorkspaceId((current) => (current === workspaceId ? null : current));
+      setPlatformWorkspaces((current) =>
+        current.filter((entry) => entry.workspace?.id !== workspaceId)
+      );
+
+      if (workspaceId === activeWorkspaceId) {
+        setActiveWorkspaceId(null);
+        setActiveWorkspace(null);
+        setActiveWorkspaceMembership(null);
+        setWorkspaceSettings(null);
+        setWorkspaceBlockedState(null);
+      }
+
+      await Promise.all([
+        loadPlatformWorkspaces(authToken),
+        loadFinanceWorkspaces(authToken, { toastOnError: false })
+      ]);
+
+      pushToast({
+        title: "Workspace deleted",
+        body: `${workspaceEntry?.workspace?.name || "Workspace"} and all of its data were permanently removed.`
+      });
+      return Boolean(payload?.deleted);
+    } catch (error) {
+      pushToast({
+        title: "Unable to delete workspace",
+        body: error.message || "Please try again."
+      });
+      return false;
+    } finally {
+      setPlatformDeletingWorkspaceId(null);
+    }
+  }, [activeWorkspaceId, authToken, loadFinanceWorkspaces, loadPlatformWorkspaces, selectedPlatformWorkspaceId]);
+
+  const handleDeletePlatformUser = useCallback(async (userEntry) => {
+    const userId = userEntry?.id || userEntry?.user?.id || null;
+    const userEmail = userEntry?.email || userEntry?.user?.email || "";
+    if (!authToken || !userId || !userEmail) {
+      return false;
+    }
+
+    setPlatformDeletingUserId(userId);
+    try {
+      const payload = await api.deletePlatformUser(authToken, userId, userEmail);
+
+      setPlatformOwners((current) => current.filter((entry) => entry?.user?.id !== userId));
+      setPlatformWorkspaceMembers((current) => current.filter((entry) => entry.id !== userId));
+      setFinanceMembers((current) => current.filter((entry) => entry.id !== userId));
+
+      await Promise.all([
+        loadPlatformOwners(authToken),
+        loadPlatformWorkspaces(authToken),
+        selectedPlatformWorkspaceId ? loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId) : Promise.resolve([]),
+        loadFinanceWorkspaces(authToken, { toastOnError: false }),
+        activeWorkspaceId ? loadWorkspaceSettings(authToken, activeWorkspaceId, { toastOnSuccess: false }) : Promise.resolve(null),
+        activeWorkspaceId ? loadFinanceMembers(authToken, activeWorkspaceId) : Promise.resolve(null)
+      ]);
+
+      pushToast({
+        title: "User deleted",
+        body: `${userEmail} was permanently removed from the app.`
+      });
+      return Boolean(payload?.deleted);
+    } catch (error) {
+      pushToast({
+        title: "Unable to delete user",
+        body: error.message || "Please try again."
+      });
+      return false;
+    } finally {
+      setPlatformDeletingUserId(null);
+    }
+  }, [activeWorkspaceId, authToken, loadFinanceMembers, loadFinanceWorkspaces, loadPlatformOwners, loadPlatformWorkspaceMembers, loadPlatformWorkspaces, loadWorkspaceSettings, selectedPlatformWorkspaceId]);
 
   useEffect(() => {
     setActiveNav(initialNav);
   }, [initialNav]);
 
   const visibleThreads = useMemo(
-    () => workspaceState.threads.filter((thread) => canSeeThread(thread, userRole, effectiveWorkspaceScope, workspaceMode)),
+    () =>
+      workspaceState.threads
+        .filter((thread) => canSeeThread(thread, userRole, effectiveWorkspaceScope, workspaceMode))
+        .filter((thread) => threadHasVisibleConversation(thread)),
     [effectiveWorkspaceScope, userRole, workspaceMode, workspaceState.threads]
   );
   const activeThread = useMemo(
@@ -19927,6 +21730,64 @@ function WorkspaceMessenger({
   }, [preferredWorkspaceUserId]);
 
   useEffect(() => {
+    const wasRealWorkspaceEnabled = realWorkspaceBootResetRef.current;
+    realWorkspaceBootResetRef.current = realWorkspaceEnabled;
+
+    if (!realWorkspaceEnabled || wasRealWorkspaceEnabled) {
+      return;
+    }
+
+    const realWorkspaceBootBundle = buildRealWorkspaceBootBundle(demoSeed);
+    setWorkspaceState(realWorkspaceBootBundle.workspaceState);
+    setActiveWorkspace(realWorkspaceBootBundle.activeWorkspace);
+    setActiveWorkspaceId(realWorkspaceBootBundle.activeWorkspaceId);
+    setActiveWorkspaceMembership(realWorkspaceBootBundle.activeWorkspaceMembership);
+    setWorkspaceSettings(realWorkspaceBootBundle.workspaceSettings);
+    setWorkspaceBlockedState(null);
+    setFinanceWorkspaces(realWorkspaceBootBundle.financeWorkspaces);
+    setFinanceSummary(realWorkspaceBootBundle.financeSummary);
+    setFinanceFxRates(null);
+    setFinanceTaxSummary(null);
+    setFinanceProfitLossReport(realWorkspaceBootBundle.financeProfitLossReport);
+    setFinanceCashFlowReport(realWorkspaceBootBundle.financeCashFlowReport);
+    setFinanceAgedReceivablesReport(null);
+    setFinanceBalanceSheetReport(null);
+    setFinancePayrollRecords([]);
+    setFinanceAccountantSummary(null);
+    setFinanceBankAccounts([]);
+    setFinanceBankTransactions({});
+    setFinanceAccountingState(
+      resolveFinanceAccountingState(
+        realWorkspaceBootBundle.financeSummary,
+        realWorkspaceBootBundle.activeWorkspace,
+        realWorkspaceBootBundle.workspaceSettings
+      )
+    );
+    setWarehouseSummary(realWorkspaceBootBundle.warehouseSummary);
+    setWarehouseAlerts(realWorkspaceBootBundle.warehouseAlerts);
+    setWarehousePurchaseOrders(realWorkspaceBootBundle.warehousePurchaseOrders);
+    setWarehouseInventoryValueReport(realWorkspaceBootBundle.warehouseInventoryValueReport);
+    setExecutionSummary(realWorkspaceBootBundle.executionSummary);
+    setOverviewPressure(realWorkspaceBootBundle.overviewPressure);
+    setWorkspaceNotifications(realWorkspaceBootBundle.workspaceNotifications);
+    setWorkspaceNotificationCount(realWorkspaceBootBundle.workspaceNotifications.length);
+    setFinanceCustomers(realWorkspaceBootBundle.financeCustomers);
+    setFinanceVendors(realWorkspaceBootBundle.financeVendors);
+    setFinanceActivity(realWorkspaceBootBundle.financeActivity);
+    setFinanceMembers(realWorkspaceBootBundle.financeMembers);
+    setPlatformWorkspaces([]);
+    setSelectedPlatformWorkspaceId(null);
+    setPlatformWorkspaceMembers([]);
+    setProjectLinkTargetMessage(null);
+    setProjectLinkSelectedProjectId("");
+    setProjectLinkOptions([]);
+    setActiveThreadId(null);
+    setDetailMetric(null);
+    setActivePicker(null);
+    setReactions({});
+  }, [demoSeed, realWorkspaceEnabled]);
+
+  useEffect(() => {
     if (!realWorkspaceEnabled || !preferredWorkspaceUserId) {
       return;
     }
@@ -19969,10 +21830,20 @@ function WorkspaceMessenger({
       setActiveWorkspaceId(null);
       setActiveWorkspaceMembership(null);
       setWorkspaceSettings(null);
+      setWorkspaceBlockedState(null);
       return undefined;
     }
 
     loadFinanceWorkspaces(authToken);
+    if (
+      !financeWorkspaces.length ||
+      !activeWorkspaceId ||
+      String(activeWorkspaceId).startsWith("workspace-demo-") ||
+      !activeWorkspaceIsKnown
+    ) {
+      return undefined;
+    }
+
     if (activeWorkspaceId) {
       loadFinanceContext(authToken, activeWorkspaceId);
       loadWorkspaceSettings(authToken, activeWorkspaceId);
@@ -19989,7 +21860,11 @@ function WorkspaceMessenger({
       loadRealWarehouseState(authToken, {}, activeWorkspaceId || undefined);
     }
     return undefined;
-  }, [activeWorkspaceId, authToken, loadExecutionSummary, loadFinanceContext, loadFinanceWorkspaces, loadRealFinanceState, loadRealWarehouseState, loadWorkspaceConversations, loadWorkspaceNotifications, loadWorkspaceOverview, loadWorkspaceSettings, realFinanceEnabled, realWarehouseEnabled, realWorkspaceEnabled]);
+  }, [activeWorkspaceId, activeWorkspaceIsKnown, authToken, financeWorkspaces.length, loadExecutionSummary, loadFinanceContext, loadFinanceWorkspaces, loadRealFinanceState, loadRealWarehouseState, loadWorkspaceConversations, loadWorkspaceNotifications, loadWorkspaceOverview, loadWorkspaceSettings, realFinanceEnabled, realWarehouseEnabled, realWorkspaceEnabled]);
+
+  useEffect(() => {
+    setWorkspaceBlockedState(null);
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (!realWorkspaceEnabled || !activeWorkspaceId) {
@@ -20019,15 +21894,17 @@ function WorkspaceMessenger({
 
   useEffect(() => {
     if (!realWorkspaceEnabled || !canBootstrapManageFinanceMembers) {
+      setPlatformOwners([]);
       setPlatformWorkspaces([]);
       setSelectedPlatformWorkspaceId(null);
       setPlatformWorkspaceMembers([]);
       return undefined;
     }
 
+    loadPlatformOwners(authToken);
     loadPlatformWorkspaces(authToken);
     return undefined;
-  }, [authToken, canBootstrapManageFinanceMembers, loadPlatformWorkspaces, realWorkspaceEnabled]);
+  }, [authToken, canBootstrapManageFinanceMembers, loadPlatformOwners, loadPlatformWorkspaces, realWorkspaceEnabled]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !realWorkspaceEnabled || !authToken || !activeWorkspaceId) {
@@ -20065,9 +21942,16 @@ function WorkspaceMessenger({
       return undefined;
     }
 
+    if (
+      String(selectedPlatformWorkspaceId).startsWith("workspace-demo-") ||
+      !selectedPlatformWorkspaceIsKnown
+    ) {
+      return undefined;
+    }
+
     loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId);
     return undefined;
-  }, [authToken, canBootstrapManageFinanceMembers, loadPlatformWorkspaceMembers, realWorkspaceEnabled, selectedPlatformWorkspaceId]);
+  }, [authToken, canBootstrapManageFinanceMembers, loadPlatformWorkspaceMembers, realWorkspaceEnabled, selectedPlatformWorkspaceId, selectedPlatformWorkspaceIsKnown]);
 
   const workspaceNotificationTone = useMemo(
     () => getWorkspaceNotificationTone(workspaceNotifications, workspaceNotificationCount),
@@ -20892,7 +22776,7 @@ function WorkspaceMessenger({
       { id: "finance-outstanding", label: "Outstanding Invoices", value: `${outstandingInvoiceCount}`, subvalue: `${formatMoneyDisplay(outstandingAmount)} still open` },
       { id: "finance-paid", label: "Paid Invoices", value: `${paidInvoiceCount}`, subvalue: `${formatMoneyDisplay(paidAmount)} collected` },
       { id: "finance-overdue", label: "Overdue Invoices", value: `${overdueCount}`, subvalue: `${formatMoneyDisplay(overdueAmount)} needs attention` },
-      { id: "finance-expenses", label: "Expenses Logged", value: formatMoney(monthlyExpenses), subvalue: recurringCount ? `${recurringCount} recurring invoice${recurringCount === 1 ? "" : "s"} active` : workspaceState.budget.department },
+      { id: "finance-expenses", label: "Expenses Logged", value: formatMoney(monthlyExpenses), subvalue: recurringCount ? `${recurringCount} recurring invoice${recurringCount === 1 ? "" : "s"} active` : (workspaceState.budget?.department || "Department budget") },
       { id: "finance-gross-profit", label: "Gross Profit", value: `approx. ${formatMoney(grossProfitApprox, normalizedBaseCurrency)}`, subvalue: `${financeProfitLossReport?.period || "month"} view in ${normalizedBaseCurrency}` },
       { id: "finance-cash-flow", label: "Net Cash Flow", value: `approx. ${formatMoney(netCashFlowApprox, normalizedBaseCurrency)}`, subvalue: `${financeCashFlowReport?.period || "month"} cash movement` },
       { id: "finance-cash-position", label: "Cash Position", value: `approx. ${formatMoney(cashPositionApprox, normalizedBaseCurrency)}`, subvalue: summary?.cashPosition?.lastSyncedAt ? `Last synced ${formatDateTime(summary.cashPosition.lastSyncedAt)}` : `${summary?.cashPosition?.accountsCount || financeBankAccounts.length} bank account${Number(summary?.cashPosition?.accountsCount || financeBankAccounts.length) === 1 ? "" : "s"}` }
@@ -21158,6 +23042,13 @@ function WorkspaceMessenger({
               />
 
               {activeThread ? (
+                workspaceBlockedState?.workspaceId === activeWorkspaceId ? (
+                  <WorkspaceDisabledStatePanel
+                    workspaceName={blockedWorkspaceName}
+                    message={workspaceBlockedState.message}
+                    onWorkspaceLogout={onWorkspaceLogout}
+                  />
+                ) : (
                 <WorkspacePane
                   role={userRole}
                   activeNav={activeNav}
@@ -21235,6 +23126,8 @@ function WorkspaceMessenger({
                   workspaceSettings={workspaceSettings}
                   workspaceSettingsLoading={workspaceSettingsLoading}
                   onSelectWorkspace={handleSelectWorkspace}
+                  platformOwners={platformOwners}
+                  platformOwnersLoading={platformOwnersLoading}
                   platformWorkspaces={platformWorkspaces}
                   platformWorkspacesLoading={platformWorkspacesLoading}
                   selectedPlatformWorkspace={selectedPlatformWorkspace}
@@ -21244,18 +23137,32 @@ function WorkspaceMessenger({
                   platformCreatingWorkspace={platformCreatingWorkspace}
                   platformProvisioningMember={platformProvisioningMember}
                   platformSavingMemberId={platformSavingMemberId}
+                  platformDeletingUserId={platformDeletingUserId}
                   onSelectPlatformWorkspace={setSelectedPlatformWorkspaceId}
+                  onRefreshPlatformOwners={() => loadPlatformOwners(authToken)}
                   onRefreshPlatformWorkspaces={() => loadPlatformWorkspaces(authToken)}
                   onRefreshPlatformWorkspaceMembers={() => loadPlatformWorkspaceMembers(authToken, selectedPlatformWorkspaceId || undefined)}
+                  onAddPlatformOwner={handleAddPlatformOwner}
+                  addingPlatformOwner={platformAddingOwner}
+                  onDeletePlatformUser={handleDeletePlatformUser}
                   onCreatePlatformWorkspace={handleCreatePlatformWorkspace}
                   onProvisionPlatformMember={handleProvisionPlatformWorkspaceMember}
+                  onDisablePlatformWorkspace={handleSetPlatformWorkspaceDisabled}
+                  onEnablePlatformWorkspace={(workspaceEntry) => handleSetPlatformWorkspaceDisabled(workspaceEntry, false)}
+                  onDeletePlatformWorkspace={handleDeletePlatformWorkspace}
+                  platformWorkspaceActionId={platformWorkspaceActionId}
+                  platformDeletingWorkspaceId={platformDeletingWorkspaceId}
                   financePermissions={financePermissions}
                   financeMembers={financeMembers}
                   financeMembersLoading={financeMembersLoading}
                   savingFinanceMemberId={savingFinanceMemberId}
+                  invitingWorkspaceMember={invitingWorkspaceMember}
+                  removingWorkspaceMemberId={removingWorkspaceMemberId}
+                  deletingPlatformUserId={platformDeletingUserId}
                   canManageFinanceMembers={canManageFinanceMembers}
                   canBootstrapManageFinanceMembers={canBootstrapManageFinanceMembers}
                   onToggleFinanceMemberRole={handleToggleFinanceMemberRole}
+                  onTogglePlatformWorkspaceRole={handleTogglePlatformWorkspaceRole}
                   onUpdateFinanceMemberAccess={handleUpdateFinanceMemberAccess}
                   onRefreshFinanceMembers={() => loadFinanceMembers(authToken)}
                   onRefreshWorkspaceSettings={() => loadWorkspaceSettings(authToken, activeWorkspaceId || undefined, { toastOnSuccess: true })}
@@ -21314,6 +23221,9 @@ function WorkspaceMessenger({
                   markingAllWorkspaceNotificationsRead={markingAllWorkspaceNotificationsRead}
                   onInviteAccountant={handleInviteAccountant}
                   invitingAccountant={invitingAccountant}
+                  onInviteWorkspaceMember={handleInviteWorkspaceMember}
+                  onRemoveWorkspaceMember={handleRemoveWorkspaceMember}
+                  onUpdateWorkspaceMemberRole={handleUpdateWorkspaceMemberRole}
                   setFinanceAccountingState={setFinanceAccountingState}
                   handlers={{
                     onApproveInvoice: handleApproveInvoice,
@@ -21344,6 +23254,7 @@ function WorkspaceMessenger({
                     onReconcileExpense: handleReconcileExpense
                   }}
                 />
+                )
               ) : null}
             </motion.div>
           </div>

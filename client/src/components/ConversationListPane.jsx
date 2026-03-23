@@ -94,14 +94,14 @@ function formatPresence(contact) {
 
 function filterContactsByTab(contacts, tab) {
   if (tab === "archived") {
-    return contacts.filter((contact) => contact.isArchived && !contact.isTrashed);
+    return contacts.filter((contact) => contact.isArchived && !contact.isTrashed && Boolean(contact.lastMessage));
   }
 
   if (tab === "drafts") {
     return contacts.filter((contact) => contact.hasDraft);
   }
 
-  return contacts.filter((contact) => !contact.isArchived && !contact.isTrashed);
+  return contacts.filter((contact) => !contact.isArchived && !contact.isTrashed && Boolean(contact.lastMessage));
 }
 
 export function ConversationListPane({
@@ -129,8 +129,8 @@ export function ConversationListPane({
     }
 
     return scopedContacts.filter((contact) =>
-      [contact.name, contact.email, contact.nickname || "", contact.displayName || ""].some((value) =>
-        value.toLowerCase().includes(query)
+      [contact?.name, contact?.email, contact?.nickname || "", contact?.displayName || ""].some((value) =>
+        String(value || "").toLowerCase().includes(query)
       )
     );
   }, [activeTab, contacts, searchTerm]);
@@ -216,11 +216,11 @@ export function ConversationListPane({
       <div className="conversation-column-list">
         {filteredContacts.length === 0 ? (
           <div className="conversation-column-empty">
-            <strong>{activeTab === "drafts" ? "No drafts yet" : "No conversations found"}</strong>
+            <strong>{activeTab === "drafts" ? "No drafts yet" : "No conversations yet"}</strong>
             <p>
               {activeTab === "drafts"
                 ? "Drafted conversations will appear here once you start composing."
-                : "Try a different search or pick another conversation view."}
+                : "Select a contact to start messaging."}
             </p>
           </div>
         ) : null}

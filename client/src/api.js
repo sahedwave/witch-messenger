@@ -40,7 +40,11 @@ async function request(path, options = {}) {
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(payload.message || "Request failed.");
+    const error = new Error(payload.message || "Request failed.");
+    error.status = response.status;
+    error.payload = payload;
+    error.path = path;
+    throw error;
   }
 
   return payload;
@@ -291,6 +295,23 @@ export const api = {
   getPlatformWorkspaces(token) {
     return request("/platform/workspaces", { token });
   },
+  getPlatformOwners(token) {
+    return request("/platform/owners", { token });
+  },
+  addPlatformOwner(token, payload) {
+    return request("/platform/owners", {
+      method: "POST",
+      token,
+      body: payload
+    });
+  },
+  deletePlatformUser(token, userId, confirmEmail) {
+    return request(`/platform/users/${userId}`, {
+      method: "DELETE",
+      token,
+      body: { confirmEmail }
+    });
+  },
   createPlatformWorkspace(token, payload) {
     return request("/platform/workspaces", {
       method: "POST",
@@ -359,6 +380,40 @@ export const api = {
   },
   getWorkspaceMembers(token, workspaceId = null) {
     return request("/workspaces/members", { token, workspaceId });
+  },
+  getWorkspaceMembersByWorkspaceId(token, workspaceId) {
+    return request(`/workspaces/${workspaceId}/members`, { token, workspaceId });
+  },
+  inviteWorkspaceMember(token, workspaceId, payload) {
+    return request(`/workspaces/${workspaceId}/members/invite`, {
+      method: "POST",
+      token,
+      workspaceId,
+      body: payload
+    });
+  },
+  removeWorkspaceMember(token, workspaceId, memberId) {
+    return request(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: "DELETE",
+      token,
+      workspaceId
+    });
+  },
+  updateWorkspaceMemberRole(token, workspaceId, memberId, role) {
+    return request(`/workspaces/${workspaceId}/members/${memberId}/role`, {
+      method: "PATCH",
+      token,
+      workspaceId,
+      body: { role }
+    });
+  },
+  toggleWorkspaceMemberRole(token, workspaceId, memberId, role) {
+    return request(`/workspaces/${workspaceId}/members/${memberId}/roles/toggle`, {
+      method: "PATCH",
+      token,
+      workspaceId,
+      body: { role }
+    });
   },
   updateWorkspaceMemberAccess(token, userId, payload, workspaceId = null) {
     return request(`/workspaces/members/${userId}/access`, {
@@ -1220,6 +1275,29 @@ export const api = {
       token,
       workspaceId,
       body: payload
+    });
+  },
+  disableWorkspace(token, workspaceId, reason = "") {
+    return request(`/workspaces/${workspaceId}/disable`, {
+      method: "POST",
+      token,
+      workspaceId,
+      body: { reason }
+    });
+  },
+  enableWorkspace(token, workspaceId) {
+    return request(`/workspaces/${workspaceId}/enable`, {
+      method: "POST",
+      token,
+      workspaceId
+    });
+  },
+  deleteWorkspace(token, workspaceId) {
+    return request(`/workspaces/${workspaceId}`, {
+      method: "DELETE",
+      token,
+      workspaceId,
+      body: { confirm: true }
     });
   },
   uploadAvatar(token, imageData) {

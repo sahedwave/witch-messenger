@@ -126,54 +126,80 @@ const defaultTasksByMode = {
   professional: [
     {
       id: "professional-1",
-      title: "Help DSTudio get more customers",
+      title: "Review Q3 invoices",
       dueDate: "",
       priority: "High",
       status: "doing",
-      note: "Review the landing page and align the campaign angle.",
-      assignee: "Phoenix Winters",
-      comments: 7,
-      links: 2,
-      scheduleTime: "01:00 PM - 02:30 PM",
+      note: "Go through the pending and overdue invoices and flag anything that needs approval today.",
+      assignee: "Sarah Khan",
+      comments: 4,
+      links: 3,
+      scheduleTime: "09:30 AM - 10:30 AM",
       accent: "green"
     },
     {
       id: "professional-2",
-      title: "Plan a trip",
+      title: "Approve expense reports",
       dueDate: "",
       priority: "Medium",
-      status: "later",
-      note: "Finalize bookings and confirm the final attendee list.",
-      assignee: "Cohen Merritt",
-      comments: 10,
-      links: 3,
-      scheduleTime: "04:00 PM - 05:30 PM",
+      status: "todo",
+      note: "Clear the open reimbursement requests so the team can close the week on time.",
+      assignee: "Abdullah Rahman",
+      comments: 2,
+      links: 2,
+      scheduleTime: "11:00 AM - 11:45 AM",
       accent: "violet"
     },
     {
       id: "professional-3",
-      title: "Return a package",
+      title: "Update inventory counts",
       dueDate: "",
-      priority: "Low",
-      status: "done",
-      note: "Shipment was handed off and delivery was confirmed.",
-      assignee: "Lukas Juarez",
-      comments: 5,
-      links: 8,
-      scheduleTime: "05:00 PM - 05:30 PM",
+      priority: "Medium",
+      status: "todo",
+      note: "Recount the fast-moving hardware items and confirm the low-stock alerts are accurate.",
+      assignee: "Mike Hasan",
+      comments: 3,
+      links: 1,
+      scheduleTime: "02:00 PM - 03:00 PM",
       accent: "blue"
     },
     {
       id: "professional-4",
-      title: "Landing page for website",
+      title: "Send client proposal",
       dueDate: "",
       priority: "High",
       status: "todo",
-      note: "Clarify the main purpose of the page and the conversion goal.",
-      assignee: "Sofia Reed",
-      comments: 4,
+      note: "Finalize the pricing summary and send the updated proposal to Global Imports.",
+      assignee: "Unassigned",
+      comments: 5,
       links: 1,
-      scheduleTime: "07:00 PM - 08:00 PM",
+      scheduleTime: "03:30 PM - 04:00 PM",
+      accent: "amber"
+    },
+    {
+      id: "professional-5",
+      title: "Monthly finance review",
+      dueDate: "",
+      priority: "Medium",
+      status: "later",
+      note: "Review gross profit, cash flow, and payment follow-ups before the monthly wrap-up call.",
+      assignee: "Sarah Khan",
+      comments: 3,
+      links: 2,
+      scheduleTime: "04:30 PM - 05:15 PM",
+      accent: "green"
+    },
+    {
+      id: "professional-6",
+      title: "Reorder office supplies",
+      dueDate: "",
+      priority: "Medium",
+      status: "todo",
+      note: "Create the restock order for chairs, USB hubs, and packaging materials.",
+      assignee: "Mike Hasan",
+      comments: 2,
+      links: 1,
+      scheduleTime: "05:30 PM - 06:00 PM",
       accent: "amber"
     }
   ]
@@ -252,15 +278,70 @@ function assignStudentCalendarDates(tasks) {
   );
 }
 
+function assignProfessionalCalendarDates(tasks) {
+  const today = new Date();
+  const todayIso = formatIsoDate(today);
+  const overdueOne = formatIsoDate(addDays(today, -2));
+  const overdueTwo = formatIsoDate(addDays(today, -1));
+  const upcomingOne = formatIsoDate(addDays(today, 2));
+  const upcomingTwo = formatIsoDate(addDays(today, 4));
+
+  return tasks.map((task) => {
+    if (task.dueDate) {
+      return task;
+    }
+
+    if (task.id === "professional-1") {
+      return { ...task, dueDate: overdueOne };
+    }
+    if (task.id === "professional-2") {
+      return { ...task, dueDate: todayIso };
+    }
+    if (task.id === "professional-3") {
+      return { ...task, dueDate: upcomingOne };
+    }
+    if (task.id === "professional-4") {
+      return { ...task, dueDate: overdueTwo };
+    }
+    if (task.id === "professional-5") {
+      return { ...task, dueDate: upcomingTwo };
+    }
+    if (task.id === "professional-6") {
+      return { ...task, dueDate: todayIso };
+    }
+
+    return { ...task, dueDate: upcomingOne };
+  });
+}
+
 function createDefaultState() {
   return {
     activeMode: "professional",
     dailyCheckins: {},
     tasksByMode: {
       student: assignStudentCalendarDates(defaultTasksByMode.student),
-      professional: defaultTasksByMode.professional
+      professional: assignProfessionalCalendarDates(defaultTasksByMode.professional)
     }
   };
+}
+
+function shouldUpgradeProfessionalDemoTasks(tasks) {
+  if (!Array.isArray(tasks) || tasks.length === 0) {
+    return true;
+  }
+
+  const taskTitles = tasks.map((task) => task?.title).filter(Boolean);
+  const legacyTitles = [
+    "Help DSTudio get more customers",
+    "Plan a trip",
+    "Return a package",
+    "Landing page for website"
+  ];
+
+  return (
+    legacyTitles.some((title) => taskTitles.includes(title)) ||
+    taskTitles.length < defaultTasksByMode.professional.length
+  );
 }
 
 function readStoredState() {
@@ -277,7 +358,9 @@ function readStoredState() {
       dailyCheckins: parsed.dailyCheckins || {},
       tasksByMode: {
         student: assignStudentCalendarDates(parsed.tasksByMode?.student || defaultTasksByMode.student),
-        professional: parsed.tasksByMode?.professional || defaultTasksByMode.professional
+        professional: shouldUpgradeProfessionalDemoTasks(parsed.tasksByMode?.professional)
+          ? assignProfessionalCalendarDates(defaultTasksByMode.professional)
+          : assignProfessionalCalendarDates(parsed.tasksByMode?.professional || defaultTasksByMode.professional)
       }
     };
   } catch {
