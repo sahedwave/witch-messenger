@@ -6,9 +6,12 @@ import { JournalEntry } from "../models/JournalEntry.js";
 import { User } from "../models/User.js";
 import { Workspace } from "../models/Workspace.js";
 import { WorkspaceMembership } from "../models/WorkspaceMembership.js";
+import { deriveTeamMemberRoleFromMembership } from "./workspaceMembershipRoles.js";
 
 const DEFAULT_WORKSPACE_NAME = process.env.DEFAULT_WORKSPACE_NAME || "Default Workspace";
 const DEFAULT_WORKSPACE_SLUG = process.env.DEFAULT_WORKSPACE_SLUG || "default-workspace";
+export const DISABLED_WORKSPACE_MESSAGE = "This workspace has been disabled. Please contact your administrator.";
+export const WORKSPACE_ACCESS_DENIED_MESSAGE = "You do not have access to this workspace";
 
 function normalizeWorkspaceId(workspaceId = null) {
   if (!workspaceId || !mongoose.isValidObjectId(workspaceId)) {
@@ -16,6 +19,38 @@ function normalizeWorkspaceId(workspaceId = null) {
   }
 
   return workspaceId;
+}
+
+function canBypassWorkspaceAccess(user) {
+  return Boolean(user?.isAdmin || user?.isSystemAdmin);
+}
+
+function buildWorkspaceError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+async function findWorkspaceMembershipForUser(
+  userId,
+  workspaceId,
+  { module = null, includeSuspended = false } = {}
+) {
+  if (!userId || !workspaceId) {
+    return null;
+  }
+
+  const filter = {
+    workspaceId,
+    userId,
+    ...(includeSuspended ? {} : { status: { $ne: "suspended" } })
+  };
+
+  if (module) {
+    filter.modules = module;
+  }
+
+  return WorkspaceMembership.findOne(filter);
 }
 
 async function resolveDerivedAccountingState(workspaceId = null) {
@@ -155,9 +190,21 @@ export async function resolveWorkspaceFromRequest(
 
     const workspace = await Workspace.findById(requestedWorkspaceId);
     if (!workspace) {
-      const error = new Error("Workspace not found.");
-      error.statusCode = 404;
-      throw error;
+      throw buildWorkspaceError("Workspace not found.", 404);
+    }
+
+    if (!canBypassWorkspaceAccess(req.user)) {
+      const membership = await findWorkspaceMembershipForUser(req.user?._id, requestedWorkspaceId, {
+        module: membershipModule
+      });
+
+      if (!membership) {
+        throw buildWorkspaceError(WORKSPACE_ACCESS_DENIED_MESSAGE, 403);
+      }
+
+      if (workspace.disabled) {
+        throw buildWorkspaceError(DISABLED_WORKSPACE_MESSAGE, 403);
+      }
     }
 
     return hydrateWorkspaceAccountingState(workspace);
@@ -187,6 +234,9 @@ export function workspaceContextMiddleware(options = {}) {
   return async function attachWorkspaceContext(req, res, next) {
     try {
       const workspace = await resolveWorkspaceFromRequest(req, options);
+      if (workspace?.disabled && !canBypassWorkspaceAccess(req.user)) {
+        throw buildWorkspaceError(DISABLED_WORKSPACE_MESSAGE, 403);
+      }
       req.workspace = workspace;
       req.workspaceId = workspace?._id || null;
       return next();
@@ -251,6 +301,11 @@ export function workspaceMembershipMiddleware(options = {}) {
   return async function attachWorkspaceMembership(req, res, next) {
     try {
       const membership = await resolveWorkspaceMembershipFromRequest(req, options);
+      if (!membership && !canBypassWorkspaceAccess(req.user)) {
+        return res.status(403).json({
+          message: WORKSPACE_ACCESS_DENIED_MESSAGE
+        });
+      }
       req.workspaceMembership = membership;
       return next();
     } catch (error) {
@@ -274,7 +329,10 @@ export function serializeWorkspace(workspace) {
     defaultCurrency: workspace.defaultCurrency || "USD",
     accountingEnabled: isAccountingEnabledForWorkspace(workspace),
     accountingEnabledAt: workspace.accountingEnabledAt || null,
-    status: workspace.status
+    status: workspace.status,
+    disabled: Boolean(workspace.disabled),
+    disabledAt: workspace.disabledAt || null,
+    disabledReason: workspace.disabledReason || null
   };
 }
 
@@ -295,6 +353,7 @@ export function serializeWorkspaceMembership(membership) {
     userId: membership.userId?.toString?.() || null,
     email: membership.email || "",
     workspaceRole: membership.workspaceRole || "member",
+    teamRole: deriveTeamMemberRoleFromMembership(membership),
     financeRoles: Array.isArray(membership.financeRoles) ? membership.financeRoles : [],
     modules: Array.isArray(membership.modules) ? membership.modules : [],
     status: membership.status || "active",

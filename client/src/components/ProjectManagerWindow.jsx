@@ -18,42 +18,40 @@ const emptyMilestone = () => ({
 const defaultProjects = [
   {
     id: "project-1",
-    name: "Website Redesign",
-    client: "Northwind Labs",
-    type: "Client project",
+    name: "Q4 Business Review",
+    client: "Acme Trading Co.",
+    type: "Executive review",
     status: "active",
-    dueDate: "2026-04-25",
-    summary: "Refresh the public website, tighten onboarding, and ship a stronger marketing landing page.",
+    dueDate: "2026-04-18",
+    summary: "Prepare the quarterly business review with finance highlights, overdue follow-ups, and leadership actions.",
     milestones: [
-      { id: "m-1", title: "Discovery approved", weight: 20, done: true },
-      { id: "m-2", title: "Landing page prototype", weight: 30, done: true },
-      { id: "m-3", title: "Content revision", weight: 25, done: false },
-      { id: "m-4", title: "Final QA pass", weight: 25, done: false }
+      { id: "m-1", title: "Finance summary drafted", weight: 33, done: true },
+      { id: "m-2", title: "Operations notes collected", weight: 34, done: false },
+      { id: "m-3", title: "Leadership review deck", weight: 33, done: false }
     ],
     team: [
-      { id: "team-1", name: "Ishika", contactId: null },
-      { id: "team-2", name: "Likhon", contactId: null },
-      { id: "team-3", name: "Abdullah", contactId: null }
+      { id: "team-1", name: "Abdullah Rahman", contactId: null },
+      { id: "team-2", name: "Sarah Khan", contactId: null },
+      { id: "team-3", name: "Priya Das", contactId: null }
     ],
     chatRoom: null
   },
   {
     id: "project-2",
-    name: "Mobile Study App",
-    client: "Internal",
-    type: "Internal build",
+    name: "Warehouse Expansion",
+    client: "Acme Trading Co.",
+    type: "Operations project",
     status: "planning",
-    dueDate: "2026-05-12",
-    summary: "Define the student roadmap, onboarding, task system, and calendar integration for mobile.",
+    dueDate: "2026-05-06",
+    summary: "Plan additional storage capacity, receiving workflow updates, and the rollout for the expanded warehouse zone.",
     milestones: [
-      { id: "m-5", title: "Scope draft", weight: 30, done: true },
-      { id: "m-6", title: "Feature map", weight: 30, done: false },
-      { id: "m-7", title: "Prototype review", weight: 40, done: false }
+      { id: "m-5", title: "Layout proposal", weight: 50, done: true },
+      { id: "m-6", title: "Vendor shortlist", weight: 50, done: false }
     ],
     team: [
-      { id: "team-4", name: "Mira", contactId: null },
-      { id: "team-5", name: "Wade", contactId: null },
-      { id: "team-6", name: "Leslie", contactId: null }
+      { id: "team-4", name: "Mike Hasan", contactId: null },
+      { id: "team-5", name: "Nadia Karim", contactId: null },
+      { id: "team-6", name: "Sarah Khan", contactId: null }
     ],
     chatRoom: null
   }
@@ -122,9 +120,9 @@ function normalizeTeam(team = []) {
       }
 
       return {
-        id: member.id || crypto.randomUUID(),
-        name: member.name || "Unnamed member",
-        contactId: member.contactId || null
+        id: member?.id || crypto.randomUUID(),
+        name: member?.name || "Unnamed member",
+        contactId: member?.contactId || null
       };
     })
     .filter((member) => member.name.trim());
@@ -189,6 +187,15 @@ function createDefaultState() {
   };
 }
 
+function shouldUpgradeDefaultProjects(projects) {
+  if (!Array.isArray(projects) || projects.length === 0) {
+    return true;
+  }
+
+  const projectNames = projects.map((project) => project?.name).filter(Boolean);
+  return projectNames.includes("Website Redesign") || projectNames.includes("Mobile Study App");
+}
+
 function readStoredState() {
   try {
     const raw = window.localStorage.getItem(PROJECT_MANAGER_STORAGE_KEY);
@@ -197,7 +204,7 @@ function readStoredState() {
     }
 
     const parsed = JSON.parse(raw);
-    const projects = Array.isArray(parsed.projects) && parsed.projects.length
+    const projects = Array.isArray(parsed.projects) && parsed.projects.length && !shouldUpgradeDefaultProjects(parsed.projects)
       ? parsed.projects.map(normalizeProject)
       : createDefaultState().projects;
     const activeProjectId = projects.some((project) => project.id === parsed.activeProjectId)
@@ -435,9 +442,9 @@ function mapProjectRecordToUiProject(project, existingProject = null) {
     summary: project.summary,
     milestones: project.milestones || [],
     team: (project.team || []).map((member) => ({
-      id: member.id || crypto.randomUUID(),
-      name: member.name,
-      contactId: member.userId || null
+      id: member?.id || crypto.randomUUID(),
+      name: member?.name || "Unnamed member",
+      contactId: member?.userId || null
     })),
     linkedTasks: Array.isArray(project.linkedTasks) ? project.linkedTasks : [],
     linkedTaskIds: Array.isArray(project.linkedTasks) ? project.linkedTasks.map((task) => task.id).filter(Boolean) : [],

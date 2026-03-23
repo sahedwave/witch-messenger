@@ -26,7 +26,7 @@ const { server, startBackgroundJobs } = createServerEnvironment({
 async function startServer() {
   await connectDB(MONGODB_URI);
   startBackgroundJobs();
-  server.listen(PORT, () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server listening on http://localhost:${PORT}`);
   });
 }
